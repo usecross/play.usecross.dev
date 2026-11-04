@@ -1,0 +1,12 @@
+# Cloudflare Pages/Workers deployment configuration
+# Phase 0: Placeholder for future deployment
+#
+# Usage (when ready):
+#   bun run build
+#   npx wrangler pages deploy dist
+
+name = "play-usecross-dev"
+compatibility_date = "2026-11-01"
+
+# Pages configuration will be added when deployment is implemented
+# For now, this serves as a marker that Cloudflare hosting is planned
