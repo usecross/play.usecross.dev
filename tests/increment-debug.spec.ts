@@ -49,11 +49,16 @@ test('debug increment POST', async ({ page }) => {
   console.log('=== POST requests made ===');
   requests.filter(r => r.method === 'POST').forEach(r => console.log(JSON.stringify(r, null, 2)));
   
-  console.log('=== POST responses ===');
-  responses.filter(r => r.url.includes('/counter') && r.status === 303).forEach(r => console.log(JSON.stringify(r, null, 2)));
+  console.log('=== All /counter responses ===');
+  responses.filter(r => r.url.includes('/counter')).forEach(r => console.log(JSON.stringify(r, null, 2)));
   
   const newCount = parseInt(await counterDisplay.textContent() || '0');
   console.log(`New count: ${newCount} (expected ${initialCount + 1})`);
+  
+  // Check if there was a redirect follow-up
+  const getAfterPost = requests.filter(r => r.method === 'GET' && r.url.includes('/counter'));
+  console.log('=== GET requests after POST ===');
+  console.log(JSON.stringify(getAfterPost, null, 2));
   
   expect(true).toBe(true);
 });

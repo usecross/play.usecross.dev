@@ -113,14 +113,14 @@ def inertia_response(request: Request, component: str, props: dict):
         const {{ createRoot }} = window.ReactDOM;
         
         function Counter({{ count }}) {{
-            const {{ Inertia }} = window;
+            const router = window.Inertia.Inertia;
             const [processing, setProcessing] = window.React.useState(false);
             
             const handleSubmit = (action) => (e) => {{
                 e.preventDefault();
                 setProcessing(true);
                 
-                Inertia.post('/counter', 
+                router.post('/counter', 
                     {{ action: action }},
                     {{
                         onFinish: () => setProcessing(false),
