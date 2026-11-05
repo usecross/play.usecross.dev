@@ -102,12 +102,12 @@ def inertia_response(request: Request, component: str, props: dict):
     </script>
     
     <script type="module">
-        import {{ createElement as h }} from 'react';
+        import {{ createElement as h, useState }} from 'react';
         import {{ createRoot }} from 'react-dom/client';
         import {{ createInertiaApp, router }} from '@inertiajs/react';
         
         function Counter({{ count }}) {{
-            const {{ useForm }} = window.InertiaReact;
+            const [processing, setProcessing] = useState(false);
             
             const incrementForm = useForm({{
                 action: 'increment'
@@ -252,17 +252,21 @@ def inertia_response(request: Request, component: str, props: dict):
             Counter: Counter
         }};
         
+        // Manually get initial page from data-page attribute
+        const appEl = document.getElementById('app');
+        const dataPage = appEl?.getAttribute('data-page');
+        const initialPage = dataPage ? JSON.parse(dataPage) : null;
+        
+        if (!initialPage) {{
+            console.error('No initial page data found');
+            throw new Error('Missing data-page attribute');
+        }}
+        
         createInertiaApp({{
-            resolve: (name) => {{
-                const Component = components[name];
-                if (!Component) {{
-                    throw new Error('Component ' + name + ' not found');
-                }}
-                return Component;
-            }},
+            page: initialPage,
+            resolve: name => components[name],
             setup({{ el, App, props }}) {{
-                const root = createRoot(el);
-                root.render(h(App, props));
+                createRoot(el).render(h(App, props));
             }},
         }});
     <\/script>
