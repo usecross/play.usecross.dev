@@ -159,7 +159,12 @@ test.describe('Phase 0 Smoke Tests', () => {
 
   test('counter decrement works', async ({ page }) => {
     await page.goto('/');
-    await page.waitForTimeout(2000);
+    
+    // Wait for Python worker to be ready
+    await page.waitForFunction(
+      () => document.getElementById('status')?.textContent?.includes('Ready'),
+      { timeout: 60000 }
+    );
     
     const iframe = page.frameLocator('iframe#preview');
     await expect(iframe.locator('h1')).toHaveText('Counter', { timeout: 30000 });
