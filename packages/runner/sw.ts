@@ -16,58 +16,65 @@
 
 import type { HttpRequest, HttpResponse } from './types';
 import { CookieJarImpl } from './cookie-jar';
-import { counterFiles } from './counter-files';
 
 declare const self: ServiceWorkerGlobalScope;
 
-let pythonWorker: Worker | null = null;
-let pythonInitialized = false;
 const cookieJar = new CookieJarImpl();
 
-// Initialize Python worker
-function ensureWorker(): Worker {
-  if (!pythonWorker) {
-    pythonWorker = new Worker(new URL('./python-worker.ts', import.meta.url), {
-      type: 'module',
-    });
-    
-    console.log('[SW] Python worker created');
-    
-    // Initialize with counter files
-    initializePythonWorker(pythonWorker);
-  }
-  return pythonWorker;
+// Communication with the main thread's Python worker
+// The main thread creates the worker and handles communication
+interface PendingRequest {
+  resolve: (response: HttpResponse) => void;
+  reject: (error: Error) => void;
 }
 
-// Initialize Python worker with counter files
-async function initializePythonWorker(worker: Worker): Promise<void> {
-  if (pythonInitialized) return;
-  
-  console.log('[SW] Initializing Python worker with counter files...');
+const pendingRequests = new Map<string, PendingRequest>();
+
+// Listen for messages from the main thread
+self.addEventListener('message', (event) => {
+  if (event.data.type === 'python-response') {
+    const { requestId, response, error } = event.data;
+    const pending = pendingRequests.get(requestId);
+    
+    if (pending) {
+      pendingRequests.delete(requestId);
+      if (error) {
+        pending.reject(new Error(error));
+      } else {
+        pending.resolve(response);
+      }
+    }
+  }
+});
+
+// Send request to Python worker via main thread
+async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
+  const requestId = Math.random().toString(36).substring(7);
   
   return new Promise((resolve, reject) => {
-    const channel = new MessageChannel();
+    pendingRequests.set(requestId, { resolve, reject });
     
-    channel.port1.onmessage = (event) => {
-      if (event.data.type === 'initialized') {
-        if (event.data.success) {
-          console.log('[SW] Python worker initialized successfully');
-          pythonInitialized = true;
-          resolve();
-        } else {
-          console.error('[SW] Python worker initialization failed');
-          reject(new Error('Python worker initialization failed'));
-        }
+    // Send to all clients (the main thread will forward to Python worker)
+    self.clients.matchAll().then(clients => {
+      if (clients.length === 0) {
+        reject(new Error('No clients available'));
+        return;
       }
-    };
+      
+      clients[0].postMessage({
+        type: 'python-request',
+        requestId,
+        request,
+      });
+    });
     
-    worker.postMessage(
-      {
-        type: 'initialize',
-        files: counterFiles,
-      },
-      [channel.port2]
-    );
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      if (pendingRequests.has(requestId)) {
+        pendingRequests.delete(requestId);
+        reject(new Error('Request timeout'));
+      }
+    }, 30000);
   });
 }
 
@@ -78,13 +85,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating Service Worker');
-  event.waitUntil(
-    (async () => {
-      await self.clients.claim();
-      // Pre-initialize the Python worker
-      ensureWorker();
-    })()
-  );
+  event.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -111,12 +112,6 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     const appUrl = url.origin + appPath + url.search + url.hash;
     
     console.log('[SW] Handling request:', request.method, appPath);
-    
-    // Ensure worker is initialized before processing request
-    const worker = ensureWorker();
-    if (!pythonInitialized) {
-      await initializePythonWorker(worker);
-    }
     
     // Read request body if present
     let body: Uint8Array | undefined;
@@ -145,8 +140,8 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
       body,
     };
     
-    // Send to Python worker (already ensured above)
-    const response = await sendHttpRequest(worker, httpRequest);
+    // Send to Python worker via main thread
+    const response = await sendToPython(httpRequest);
     
     // Extract Set-Cookie headers and update cookie jar
     const setCookieHeaders: string[] = [];
@@ -183,36 +178,6 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
       }
     );
   }
-}
-
-/**
- * Send HTTP request to Python worker and wait for response
- */
-function sendHttpRequest(
-  worker: Worker,
-  request: HttpRequest
-): Promise<HttpResponse> {
-  return new Promise((resolve, reject) => {
-    const channel = new MessageChannel();
-    
-    channel.port1.onmessage = (event) => {
-      if (event.data.type === 'http-response') {
-        if (event.data.error) {
-          reject(new Error(event.data.error));
-        } else {
-          resolve(event.data.response);
-        }
-      }
-    };
-    
-    worker.postMessage(
-      {
-        type: 'http-request',
-        request,
-      },
-      [channel.port2]
-    );
-  });
 }
 
 export {};

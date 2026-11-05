@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SW Debug</title>
+</head>
+<body>
+    <h1>Service Worker Debug</h1>
+    <div id="log"></div>
+    <button onclick="testFetch()">Test /preview/ fetch</button>
+    <script>
+        const log = document.getElementById('log');
+        
+        function addLog(msg) {
+            console.log(msg);
+            const p = document.createElement('p');
+            p.textContent = msg;
+            log.appendChild(p);
+        }
+        
+        async function init() {
+            addLog('Registering SW...');
+            try {
+                const swUrl = '/sw.ts';
+                const registration = await navigator.serviceWorker.register(swUrl, {
+                    scope: '/',
+                    type: 'module',
+                });
+                
+                addLog('SW registered: ' + registration.scope);
+                
+                if (registration.active) {
+                    addLog('SW is active');
+                } else if (registration.installing) {
+                    addLog('SW is installing...');
+                    registration.installing.addEventListener('statechange', (e) => {
+                        addLog('SW state: ' + e.target.state);
+                    });
+                }
+                
+                await navigator.serviceWorker.ready;
+                addLog('SW ready!');
+            } catch (error) {
+                addLog('Error: ' + error.message);
+            }
+        }
+        
+        async function testFetch() {
+            addLog('Fetching /preview/counter...');
+            try {
+                const response = await fetch('/preview/counter');
+                addLog('Response status: ' + response.status);
+                const text = await response.text();
+                addLog('Response (first 200 chars): ' + text.substring(0, 200));
+            } catch (error) {
+                addLog('Fetch error: ' + error.message);
+            }
+        }
+        
+        init();
+    </script>
+</body>
+</html>
