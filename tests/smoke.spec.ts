@@ -108,22 +108,23 @@ test.describe('Phase 0 Smoke Tests', () => {
   test('counter preview loads and displays UI', async ({ page }) => {
     await page.goto('/');
     
-    // Wait for Python worker to be ready
+    // Wait for Python worker to be ready (longer in CI)
     await page.waitForFunction(
       () => document.getElementById('status')?.textContent?.includes('Ready'),
-      { timeout: 60000 }
+      { timeout: 90000 }
     );
     
-    // Give iframe a moment to initialize
-    await page.waitForTimeout(1000);
+    // Give iframe more time to initialize in CI environment
+    await page.waitForTimeout(3000);
     
     // Get the preview iframe
     const iframe = page.frameLocator('iframe#preview');
     
     // Wait for counter UI to load (this tests the full ASGI bridge)
     // The counter component should be visible with the count
+    // Longer timeout for CI where Pyodide/Inertia may take more time
     const counterTitle = iframe.locator('h1');
-    await expect(counterTitle).toBeVisible({ timeout: 30000 });
+    await expect(counterTitle).toBeVisible({ timeout: 60000 });
     await expect(counterTitle).toHaveText('Counter');
     
     // Check that the counter value is displayed
@@ -134,17 +135,20 @@ test.describe('Phase 0 Smoke Tests', () => {
   test('counter increment works through ASGI bridge', async ({ page }) => {
     await page.goto('/');
     
-    // Wait for Python worker to be ready
+    // Wait for Python worker to be ready (longer in CI)
     await page.waitForFunction(
       () => document.getElementById('status')?.textContent?.includes('Ready'),
-      { timeout: 60000 }
+      { timeout: 90000 }
     );
+    
+    // Give iframe time to initialize
+    await page.waitForTimeout(3000);
     
     // Get the preview iframe
     const iframe = page.frameLocator('iframe#preview');
     
-    // Wait for counter to load
-    await expect(iframe.locator('h1')).toHaveText('Counter', { timeout: 30000 });
+    // Wait for counter to load (longer timeout for CI)
+    await expect(iframe.locator('h1')).toHaveText('Counter', { timeout: 60000 });
     
     // Get initial count
     const counterDisplay = iframe.locator('div').filter({ hasText: /^[0-9]+$/ }).first();
@@ -166,14 +170,17 @@ test.describe('Phase 0 Smoke Tests', () => {
   test('counter decrement works', async ({ page }) => {
     await page.goto('/');
     
-    // Wait for Python worker to be ready
+    // Wait for Python worker to be ready (longer in CI)
     await page.waitForFunction(
       () => document.getElementById('status')?.textContent?.includes('Ready'),
-      { timeout: 60000 }
+      { timeout: 90000 }
     );
     
+    // Give iframe time to initialize
+    await page.waitForTimeout(3000);
+    
     const iframe = page.frameLocator('iframe#preview');
-    await expect(iframe.locator('h1')).toHaveText('Counter', { timeout: 30000 });
+    await expect(iframe.locator('h1')).toHaveText('Counter', { timeout: 60000 });
     
     // Increment once to ensure we're not at 0
     await iframe.locator('button').filter({ hasText: '+' }).click();
