@@ -104,6 +104,7 @@ def inertia_response(request: Request, component: str, props: dict):
     
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@inertiajs/inertia@0.11.1/dist/index.umd.js"></script>
     <script src="https://unpkg.com/@inertiajs/inertia-react@0.8.1/dist/index.umd.js"></script>
     
     <script>
