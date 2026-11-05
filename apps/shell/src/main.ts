@@ -55,8 +55,12 @@ async function initPythonWorker() {
 
 // Handle messages from Service Worker (requests to Python)
 navigator.serviceWorker.addEventListener('message', async (event) => {
+  console.log('[Shell] Received SW message:', event.data.type);
+  
   if (event.data.type === 'python-request') {
     const { requestId, request } = event.data;
+    
+    console.log('[Shell] Python request:', request.method, request.url);
     
     if (!pythonWorker) {
       // Send error back
@@ -69,9 +73,12 @@ navigator.serviceWorker.addEventListener('message', async (event) => {
     }
     
     // Forward to Python worker
+    console.log('[Shell] Forwarding to Python worker...');
     const channel = new MessageChannel();
     
     channel.port1.onmessage = (workerEvent) => {
+      console.log('[Shell] Got response from Python worker');
+
       if (workerEvent.data.type === 'http-response') {
         // Send response back to SW
         event.source?.postMessage({
