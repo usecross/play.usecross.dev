@@ -1,0 +1,14 @@
+{
+  "_comment": "Synthetic Vite manifest for Phase 0",
+  "_phase0_note": "CrossInertia normally reads this to find frontend entry points. In Phase 0, we bypass Vite probing and provide this synthetic manifest in the Pyodide VFS. The actual React/Inertia code is inlined in app.html for simplicity.",
+  "app.tsx": {
+    "file": "assets/app-abc123.js",
+    "src": "frontend/app.tsx",
+    "isEntry": true,
+    "css": ["assets/app-abc123.css"]
+  },
+  "pages/Counter.tsx": {
+    "file": "assets/Counter-def456.js",
+    "src": "frontend/pages/Counter.tsx"
+  }
+}

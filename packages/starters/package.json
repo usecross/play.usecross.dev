@@ -1,0 +1,6 @@
+{
+  "name": "@play.usecross.dev/starters",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Starter templates and pinned dependencies for CrossInertia playground"
+}

@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Counter - CrossInertia Playground</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        #app {
+            width: 100%;
+            max-width: 600px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app" data-page="{{ page }}"></div>
+    
+    <!-- Phase 0: CDN React and Inertia for proof of concept -->
+    <!-- Phase 1+: Bundled via esbuild-wasm -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@inertiajs/react@1.0.0/dist/index.umd.js"></script>
+    
+    <script type="module">
+        // Phase 0: Inline Counter component for simplicity
+        // Phase 1+: Compiled from frontend/pages/Counter.tsx
+        
+        const { createInertiaApp } = window.InertiaReact;
+        const { createElement: h } = window.React;
+        const { createRoot } = window.ReactDOM;
+        
+        // Counter component
+        function Counter({ count }) {
+            const { useForm } = window.InertiaReact;
+            
+            const incrementForm = useForm({
+                action: 'increment'
+            });
+            
+            const decrementForm = useForm({
+                action: 'decrement'
+            });
+            
+            const resetForm = useForm({
+                action: 'reset'
+            });
+            
+            return h('div', {
+                style: {
+                    background: 'white',
+                    borderRadius: '12px',
+                    padding: '3rem',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+                    textAlign: 'center'
+                }
+            }, [
+                h('h1', {
+                    key: 'title',
+                    style: {
+                        fontSize: '2.5rem',
+                        marginBottom: '1rem',
+                        color: '#1a1a1a'
+                    }
+                }, 'Counter'),
+                
+                h('div', {
+                    key: 'count',
+                    style: {
+                        fontSize: '4rem',
+                        fontWeight: 'bold',
+                        color: '#667eea',
+                        margin: '2rem 0'
+                    }
+                }, count),
+                
+                h('div', {
+                    key: 'buttons',
+                    style: {
+                        display: 'flex',
+                        gap: '1rem',
+                        justifyContent: 'center',
+                        marginTop: '2rem'
+                    }
+                }, [
+                    h('form', {
+                        key: 'dec',
+                        onSubmit: (e) => {
+                            e.preventDefault();
+                            decrementForm.post('/counter');
+                        }
+                    }, [
+                        h('button', {
+                            key: 'btn',
+                            type: 'submit',
+                            disabled: decrementForm.processing,
+                            style: {
+                                padding: '1rem 2rem',
+                                fontSize: '1.25rem',
+                                background: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                transition: 'all 0.2s',
+                                opacity: decrementForm.processing ? 0.6 : 1
+                            }
+                        }, '−')
+                    ]),
+                    
+                    h('form', {
+                        key: 'inc',
+                        onSubmit: (e) => {
+                            e.preventDefault();
+                            incrementForm.post('/counter');
+                        }
+                    }, [
+                        h('button', {
+                            key: 'btn',
+                            type: 'submit',
+                            disabled: incrementForm.processing,
+                            style: {
+                                padding: '1rem 2rem',
+                                fontSize: '1.25rem',
+                                background: '#667eea',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                transition: 'all 0.2s',
+                                opacity: incrementForm.processing ? 0.6 : 1
+                            }
+                        }, '+')
+                    ]),
+                    
+                    h('form', {
+                        key: 'reset',
+                        onSubmit: (e) => {
+                            e.preventDefault();
+                            resetForm.post('/counter');
+                        }
+                    }, [
+                        h('button', {
+                            key: 'btn',
+                            type: 'submit',
+                            disabled: resetForm.processing,
+                            style: {
+                                padding: '1rem 2rem',
+                                fontSize: '1rem',
+                                background: '#6c757d',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                transition: 'all 0.2s',
+                                opacity: resetForm.processing ? 0.6 : 1
+                            }
+                        }, 'Reset')
+                    ])
+                ]),
+                
+                h('p', {
+                    key: 'note',
+                    style: {
+                        marginTop: '2rem',
+                        color: '#666',
+                        fontSize: '0.875rem'
+                    }
+                }, 'Phase 0: Full Inertia POST → 303 → render cycle via Pyodide')
+            ]);
+        }
+        
+        // Components map
+        const components = {
+            Counter: Counter
+        };
+        
+        // Initialize Inertia app
+        createInertiaApp({
+            resolve: (name) => components[name],
+            setup({ el, App, props }) {
+                createRoot(el).render(h(App, props));
+            },
+        });
+    </script>
+</body>
+</html>

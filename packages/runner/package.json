@@ -1,0 +1,21 @@
+{
+  "name": "@play.usecross.dev/runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./types.ts",
+      "default": "./index.ts"
+    },
+    "./sw": "./sw.ts"
+  },
+  "dependencies": {
+    "comlink": "^4.4.1",
+    "pyodide": "^0.27.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.8.0",
+    "typescript": "^5.6.0"
+  }
+}
