@@ -3,8 +3,6 @@
  * Phase 0: Service Worker registration and preview setup
  */
 
-import { registerRunner } from '@play.usecross.dev/runner';
-
 // Status display
 const statusEl = document.getElementById('status') as HTMLElement;
 const previewFrame = document.getElementById('preview') as HTMLIFrameElement;
@@ -20,10 +18,33 @@ async function initialize() {
   try {
     updateStatus('Registering Service Worker...');
     
-    const registration = await registerRunner();
-    
-    updateStatus('Service Worker registered');
-    console.log('[Shell] Service Worker ready:', registration);
+    // Register the Service Worker from /sw.js (proper scope)
+    if (!('serviceWorker' in navigator)) {
+      throw new Error('Service Workers are not supported in this browser');
+    }
+
+    const registration = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+    });
+
+    // Wait for the service worker to be active
+    if (registration.active) {
+      updateStatus('Service Worker registered');
+      console.log('[Shell] Service Worker ready:', registration);
+    } else {
+      await new Promise<void>((resolve) => {
+        const worker = registration.installing || registration.waiting;
+        if (worker) {
+          worker.addEventListener('statechange', () => {
+            if (worker.state === 'activated') {
+              updateStatus('Service Worker registered');
+              console.log('[Shell] Service Worker ready:', registration);
+              resolve();
+            }
+          });
+        }
+      });
+    }
     
     // Service Worker is now active and will intercept requests to /preview/
   } catch (error) {

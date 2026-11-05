@@ -77,22 +77,22 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     }
     
     // Build headers object, adding virtual cookies
-    const headers: Record<string, string> = {};
+    const requestHeaders: Record<string, string> = {};
     request.headers.forEach((value, key) => {
-      headers[key] = value;
+      requestHeaders[key] = value;
     });
     
     // Inject virtual cookies
     const cookieHeader = cookieJar.getCookieHeader(appUrl);
     if (cookieHeader) {
-      headers['cookie'] = cookieHeader;
+      requestHeaders['cookie'] = cookieHeader;
     }
     
     // Create HTTP request for Python
     const httpRequest: HttpRequest = {
       method: request.method,
       url: appUrl,
-      headers,
+      headers: requestHeaders,
       body,
     };
     
@@ -112,15 +112,15 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     }
     
     // Build Response
-    const headers = new Headers();
+    const responseHeaders = new Headers();
     Object.entries(response.headers).forEach(([key, value]) => {
-      headers.append(key, value);
+      responseHeaders.append(key, value);
     });
     
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers,
+      headers: responseHeaders,
     });
   } catch (error) {
     console.error('[SW] Request failed:', error);

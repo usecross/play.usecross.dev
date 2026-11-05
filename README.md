@@ -48,6 +48,24 @@ bun run dev
 
 Open http://localhost:3000 to see the playground shell. The preview iframe at `/preview/` is intercepted by the Service Worker and routed to the Pyodide-powered Python application.
 
+### Running Tests
+
+Phase 0 includes lightweight smoke tests to catch build breaks:
+
+```bash
+# First time: Install Playwright browsers
+npm run test:install
+
+# Run smoke tests
+npm test
+```
+
+Tests verify:
+- Shell loads without Vite errors
+- Service Worker registers successfully
+- Preview iframe is present
+- No critical console errors
+
 ### Try the Counter Example
 
 The counter example demonstrates a complete Inertia.js flow:

@@ -8,6 +8,9 @@ dist/
 build/
 .cache/
 
+# Exception: Phase 0 synthetic Vite manifest (not a build artifact)
+!examples/counter/static/build/.vite/manifest.json
+
 # Environment and secrets
 .env
 .env.local
@@ -41,3 +44,8 @@ yarn-error.log*
 # Temporary files
 tmp/
 temp/
+
+# Test results
+test-results/
+playwright-report/
+playwright/.cache/
