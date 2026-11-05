@@ -35,8 +35,9 @@ app = FastAPI()
 # Phase 1+: SQLite with IDBFS persistence
 counter_value = 0
 
-# Templates
+# Templates (disable caching to avoid hash issues in Pyodide)
 templates = Jinja2Templates(directory="templates")
+templates.env.cache = None
 
 
 def is_inertia_request(request: Request) -> bool:

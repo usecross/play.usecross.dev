@@ -49,7 +49,7 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
         'query_string': query_string,
         'root_path': '',
         'headers': _build_asgi_headers(headers),
-        'server': (parsed.hostname or 'localhost', parsed.port or default_port),
+        'server': tuple([parsed.hostname or 'localhost', parsed.port or default_port]),
     }
     
     # Response state
@@ -129,10 +129,11 @@ def _build_asgi_headers(headers: Dict[str, str]) -> List[tuple]:
     """Convert headers dict to ASGI format (list of byte tuples)"""
     asgi_headers = []
     for name, value in headers.items():
-        asgi_headers.append((
+        # Ensure tuple, not list (JSON parsing may create lists)
+        asgi_headers.append(tuple([
             name.lower().encode('latin-1'),
             value.encode('latin-1')
-        ))
+        ]))
     return asgi_headers
 
 

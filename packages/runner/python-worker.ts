@@ -45,6 +45,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
     'starlette',
     'pydantic',
     'python-multipart',  // Required for FastAPI form parsing
+    'jinja2',  // Required for Jinja2Templates
   ]);
   
   // Install CrossInertia (when available on PyPI, or from GitHub)
@@ -128,6 +129,7 @@ async function handleHttpRequest(request: HttpRequest): Promise<HttpResponse> {
   }
 
   // Convert request to Python-friendly format
+  // Pass as JSON string to avoid JsProxy conversion issues
   const requestData = {
     method: request.method,
     url: request.url,
@@ -135,14 +137,14 @@ async function handleHttpRequest(request: HttpRequest): Promise<HttpResponse> {
     body: request.body ? Array.from(request.body) : [],
   };
 
-  // Call the ASGI bridge using pyodide's object conversion
-  pyodide.globals.set('request_data_js', requestData);
+  // Call the ASGI bridge using JSON for reliable conversion
+  pyodide.globals.set('request_json', JSON.stringify(requestData));
   const responseData = await pyodide.runPythonAsync(`
 import json
 from asgi_bridge import handle_http_request
 
-# Convert JsProxy to Python dict
-request_data = request_data_js.to_py()
+# Parse JSON to Python dict
+request_data = json.loads(request_json)
 response = await handle_http_request(request_data)
 json.dumps(response)
   `);
