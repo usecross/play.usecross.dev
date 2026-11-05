@@ -56,11 +56,13 @@ async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
     
     // Send to all clients (the main thread will forward to Python worker)
     self.clients.matchAll().then(clients => {
+      console.log('[SW] sendToPython: found', clients.length, 'clients');
       if (clients.length === 0) {
         reject(new Error('No clients available'));
         return;
       }
       
+      console.log('[SW] Posting message to client:', request.method, request.url);
       clients[0].postMessage({
         type: 'python-request',
         requestId,
