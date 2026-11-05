@@ -91,11 +91,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
+  console.log('[SW] Fetch event:', event.request.method, url.pathname);
+  
   // Only intercept /preview/ paths
   if (!url.pathname.startsWith('/preview/')) {
+    console.log('[SW] Skipping (not /preview/*)');
     return;
   }
 
+  console.log('[SW] Intercepting:', event.request.method, url.pathname);
   event.respondWith(handlePreviewRequest(event.request));
 });
 
