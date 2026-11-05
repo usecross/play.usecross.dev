@@ -132,15 +132,17 @@ async function handleHttpRequest(request: HttpRequest): Promise<HttpResponse> {
     method: request.method,
     url: request.url,
     headers: request.headers,
-    body: request.body ? Array.from(request.body) : null,
+    body: request.body ? Array.from(request.body) : [],
   };
 
-  // Call the ASGI bridge
+  // Call the ASGI bridge using pyodide's object conversion
+  pyodide.globals.set('request_data_js', requestData);
   const responseData = await pyodide.runPythonAsync(`
 import json
 from asgi_bridge import handle_http_request
 
-request_data = ${JSON.stringify(requestData)}
+# Convert JsProxy to Python dict
+request_data = request_data_js.to_py()
 response = await handle_http_request(request_data)
 json.dumps(response)
   `);
