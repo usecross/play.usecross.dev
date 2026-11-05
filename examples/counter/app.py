@@ -89,15 +89,21 @@ def inertia_response(request: Request, component: str, props: dict):
 <body>
     <div id="app" data-page="{page_json}"></div>
     
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@inertiajs/inertia@0.11.1/dist/index.umd.js"></script>
-    <script src="https://unpkg.com/@inertiajs/inertia-react@0.8.1/dist/index.umd.js"></script>
+    <script type="importmap">
+    {{
+        "imports": {{
+            "react": "https://esm.sh/react@19.3.1",
+            "react-dom": "https://esm.sh/react-dom@19.3.1",
+            "react-dom/client": "https://esm.sh/react-dom@19.3.1/client",
+            "@inertiajs/react": "https://esm.sh/@inertiajs/react@3.11.0"
+        }}
+    }}
+    </script>
     
-    <script>
-        const {{ createInertiaApp }} = window.InertiaReact;
-        const {{ createElement: h }} = window.React;
-        const {{ createRoot }} = window.ReactDOM;
+    <script type="module">
+        import {{ createElement as h }} from 'react';
+        import {{ createRoot }} from 'react-dom/client';
+        import {{ createInertiaApp, router }} from '@inertiajs/react';
         
         function Counter({{ count }}) {{
             const {{ useForm }} = window.InertiaReact;
@@ -246,9 +252,16 @@ def inertia_response(request: Request, component: str, props: dict):
         }};
         
         createInertiaApp({{
-            resolve: (name) => components[name],
+            resolve: (name) => {{
+                const Component = components[name];
+                if (!Component) {{
+                    throw new Error('Component ' + name + ' not found');
+                }}
+                return Component;
+            }},
             setup({{ el, App, props }}) {{
-                createRoot(el).render(h(App, props));
+                const root = createRoot(el);
+                root.render(h(App, props));
             }},
         }});
     <\/script>
