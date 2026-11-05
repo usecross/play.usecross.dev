@@ -129,8 +129,11 @@ test.describe('Phase 0 Smoke Tests', () => {
   test('counter increment works through ASGI bridge', async ({ page }) => {
     await page.goto('/');
     
-    // Wait for SW to be ready
-    await page.waitForTimeout(2000);
+    // Wait for Python worker to be ready
+    await page.waitForFunction(
+      () => document.getElementById('status')?.textContent?.includes('Ready'),
+      { timeout: 60000 }
+    );
     
     // Get the preview iframe
     const iframe = page.frameLocator('iframe#preview');
