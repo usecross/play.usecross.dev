@@ -256,8 +256,18 @@ def inertia_response(request: Request, component: str, props: dict):
             Counter: Counter
         }};
         
-        // Inertia v3 auto-discovers #app and data-page
+        // Manually get initial page from data-page attribute
+        const appEl = document.getElementById('app');
+        const dataPage = appEl?.getAttribute('data-page');
+        const initialPage = dataPage ? JSON.parse(dataPage) : null;
+        
+        if (!initialPage) {{
+            console.error('No initial page data found');
+            throw new Error('Missing data-page attribute');
+        }}
+        
         createInertiaApp({{
+            page: initialPage,
             resolve: name => components[name],
             setup({{ el, App, props }}) {{
                 createRoot(el).render(h(App, props));
