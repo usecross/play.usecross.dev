@@ -257,9 +257,16 @@ def inertia_response(request: Request, component: str, props: dict):
         }};
         
         createInertiaApp({{
-            resolve: (name) => components[name],
+            resolve: (name) => {{
+                const Component = components[name];
+                if (!Component) {{
+                    throw new Error(`Component ${{name}} not found`);
+                }}
+                return Component;
+            }},
             setup({{ el, App, props }}) {{
-                createRoot(el).render(h(App, props));
+                const root = createRoot(el);
+                root.render(h(App, props));
             }},
         }});
     <\/script>
