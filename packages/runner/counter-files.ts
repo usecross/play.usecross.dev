@@ -285,12 +285,16 @@ async def get_counter(request: Request):
 
 
 @app.post("/counter")
-async def post_counter(request: Request, action: str = Form(...)):
+async def post_counter(request: Request):
     """
     Handle counter actions
-    POST with action=increment or action=decrement
+    POST with JSON body {action: 'increment' | 'decrement' | 'reset'}
     """
     global counter_value
+    
+    # Parse JSON body
+    body = await request.json()
+    action = body.get("action")
     
     if action == "increment":
         counter_value += 1
