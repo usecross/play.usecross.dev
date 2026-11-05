@@ -7,11 +7,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "pnpm --filter @play.usecross.dev/shell dev",
-    "build": "pnpm --filter @play.usecross.dev/shell build",
-    "preview": "pnpm --filter @play.usecross.dev/shell preview",
-    "test": "npx playwright test",
-    "test:install": "npx playwright install --with-deps chromium"
+    "dev": "bun --filter @play.usecross.dev/shell dev",
+    "build": "bun --filter @play.usecross.dev/shell build",
+    "preview": "bun --filter @play.usecross.dev/shell preview",
+    "test": "bunx playwright test",
+    "test:install": "bunx playwright install --with-deps chromium"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
