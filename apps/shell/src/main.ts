@@ -53,14 +53,11 @@ async function initPythonWorker() {
   });
 }
 
-// Handle messages from Service Worker (requests to Python)
-// Try both event listeners to debug
-window.addEventListener('message', (event) => {
-  console.log('[Shell] Window message:', event.data);
-});
+// Handle messages from Service Worker via BroadcastChannel
+const pythonChannel = new BroadcastChannel('python-bridge');
 
-navigator.serviceWorker.addEventListener('message', async (event) => {
-  console.log('[Shell] Received SW message:', event.data.type);
+pythonChannel.addEventListener('message', async (event) => {
+  console.log('[Shell] Received message from BroadcastChannel:', event.data.type);
   
   if (event.data.type === 'python-request') {
     const { requestId, request } = event.data;
@@ -69,7 +66,7 @@ navigator.serviceWorker.addEventListener('message', async (event) => {
     
     if (!pythonWorker) {
       // Send error back
-      event.source?.postMessage({
+      pythonChannel.postMessage({
         type: 'python-response',
         requestId,
         error: 'Python worker not initialized',
@@ -83,10 +80,9 @@ navigator.serviceWorker.addEventListener('message', async (event) => {
     
     channel.port1.onmessage = (workerEvent) => {
       console.log('[Shell] Got response from Python worker');
-
       if (workerEvent.data.type === 'http-response') {
-        // Send response back to SW
-        event.source?.postMessage({
+        // Send response back to SW via BroadcastChannel
+        pythonChannel.postMessage({
           type: 'python-response',
           requestId,
           response: workerEvent.data.response,
