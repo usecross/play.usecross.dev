@@ -113,19 +113,20 @@ def inertia_response(request: Request, component: str, props: dict):
         const {{ createRoot }} = window.ReactDOM;
         
         function Counter({{ count }}) {{
-            const {{ useForm }} = window.InertiaReact;
+            const {{ usePage, router }} = window.InertiaReact;
+            const [processing, setProcessing] = window.React.useState(false);
             
-            const incrementForm = useForm({{
-                action: 'increment'
-            }});
-            
-            const decrementForm = useForm({{
-                action: 'decrement'
-            }});
-            
-            const resetForm = useForm({{
-                action: 'reset'
-            }});
+            const handleSubmit = (action) => (e) => {{
+                e.preventDefault();
+                setProcessing(true);
+                
+                const formData = new FormData();
+                formData.append('action', action);
+                
+                router.post('/counter', formData, {{
+                    onFinish: () => setProcessing(false)
+                }});
+            }};
             
             return h('div', {{
                 style: {{
@@ -166,15 +167,12 @@ def inertia_response(request: Request, component: str, props: dict):
                 }}, [
                     h('form', {{
                         key: 'dec',
-                        onSubmit: (e) => {{
-                            e.preventDefault();
-                            decrementForm.post('/counter');
-                        }}
+                        onSubmit: handleSubmit('decrement')
                     }}, [
                         h('button', {{
                             key: 'btn',
                             type: 'submit',
-                            disabled: decrementForm.processing,
+                            disabled: processing,
                             style: {{
                                 padding: '1rem 2rem',
                                 fontSize: '1.25rem',
@@ -185,22 +183,19 @@ def inertia_response(request: Request, component: str, props: dict):
                                 cursor: 'pointer',
                                 fontWeight: '600',
                                 transition: 'all 0.2s',
-                                opacity: decrementForm.processing ? 0.6 : 1
+                                opacity: processing ? 0.6 : 1
                             }}
                         }}, '−')
                     ]),
                     
                     h('form', {{
                         key: 'inc',
-                        onSubmit: (e) => {{
-                            e.preventDefault();
-                            incrementForm.post('/counter');
-                        }}
+                        onSubmit: handleSubmit('increment')
                     }}, [
                         h('button', {{
                             key: 'btn',
                             type: 'submit',
-                            disabled: incrementForm.processing,
+                            disabled: processing,
                             style: {{
                                 padding: '1rem 2rem',
                                 fontSize: '1.25rem',
@@ -211,22 +206,19 @@ def inertia_response(request: Request, component: str, props: dict):
                                 cursor: 'pointer',
                                 fontWeight: '600',
                                 transition: 'all 0.2s',
-                                opacity: incrementForm.processing ? 0.6 : 1
+                                opacity: processing ? 0.6 : 1
                             }}
                         }}, '+')
                     ]),
                     
                     h('form', {{
                         key: 'reset',
-                        onSubmit: (e) => {{
-                            e.preventDefault();
-                            resetForm.post('/counter');
-                        }}
+                        onSubmit: handleSubmit('reset')
                     }}, [
                         h('button', {{
                             key: 'btn',
                             type: 'submit',
-                            disabled: resetForm.processing,
+                            disabled: processing,
                             style: {{
                                 padding: '1rem 2rem',
                                 fontSize: '1rem',
@@ -237,7 +229,7 @@ def inertia_response(request: Request, component: str, props: dict):
                                 cursor: 'pointer',
                                 fontWeight: '600',
                                 transition: 'all 0.2s',
-                                opacity: resetForm.processing ? 0.6 : 1
+                                opacity: processing ? 0.6 : 1
                             }}
                         }}, 'Reset')
                     ])
