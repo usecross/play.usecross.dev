@@ -29,7 +29,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
 
   console.log('[Python Worker] Loading Pyodide...');
   pyodide = await loadPyodide({
-    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/',
+    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.8/full/',
   });
 
   console.log('[Python Worker] Installing packages...');
@@ -87,13 +87,15 @@ sys.modules['cross_inertia.fastapi'] = fastapi_module
   // Load the ASGI bridge module
   console.log('[Python Worker] Loading ASGI bridge...');
   const asgiBridgeCode = await fetch(new URL('./asgi-bridge.py', import.meta.url)).then(r => r.text());
-  pyodide.runPython(asgiBridgeCode);
   
-  // Register asgi_bridge in sys.modules so it can be imported
+  // Write asgi_bridge.py to virtual filesystem
+  pyodide.FS.writeFile('/asgi_bridge.py', asgiBridgeCode);
+  
+  // Import it
   pyodide.runPython(`
 import sys
+sys.path.insert(0, '/')
 import asgi_bridge
-sys.modules['asgi_bridge'] = asgi_bridge
   `);
 
   // Load user files into virtual filesystem if provided
