@@ -72,16 +72,15 @@ test.describe('Phase 0 Smoke Tests', () => {
     const status = page.locator('#status');
     await expect(status).toBeVisible();
     
-    // Wait for initialization
-    await page.waitForTimeout(2000);
-    
-    // Should show one of the expected states
-    const statusText = await status.textContent();
-    expect(
-      statusText?.includes('Ready') || 
-      statusText?.includes('registered') ||
-      statusText?.includes('Registering')
-    ).toBe(true);
+    // Wait for Ready state specifically (more reliable than text check)
+    await page.waitForFunction(
+      () => {
+        const statusEl = document.getElementById('status');
+        const text = statusEl?.textContent || '';
+        return text.includes('Ready') || text.includes('registered');
+      },
+      { timeout: 60000 }
+    );
   });
 
   test('no console errors during load', async ({ page }) => {
@@ -109,8 +108,14 @@ test.describe('Phase 0 Smoke Tests', () => {
   test('counter preview loads and displays UI', async ({ page }) => {
     await page.goto('/');
     
-    // Wait for SW to be ready
-    await page.waitForTimeout(2000);
+    // Wait for Python worker to be ready
+    await page.waitForFunction(
+      () => document.getElementById('status')?.textContent?.includes('Ready'),
+      { timeout: 60000 }
+    );
+    
+    // Give iframe a moment to initialize
+    await page.waitForTimeout(1000);
     
     // Get the preview iframe
     const iframe = page.frameLocator('iframe#preview');
@@ -143,14 +148,15 @@ test.describe('Phase 0 Smoke Tests', () => {
     
     // Get initial count
     const counterDisplay = iframe.locator('div').filter({ hasText: /^[0-9]+$/ }).first();
+    await expect(counterDisplay).toBeVisible();
     const initialCount = parseInt(await counterDisplay.textContent() || '0');
     
     // Click increment button (+)
     const incrementBtn = iframe.locator('button').filter({ hasText: '+' });
     await incrementBtn.click();
     
-    // Wait for Inertia to process (POST → 303 → GET)
-    await page.waitForTimeout(1000);
+    // Wait for Inertia to process (POST → 303 → GET) - be more generous in CI
+    await page.waitForTimeout(2000);
     
     // Verify count increased
     const newCount = parseInt(await counterDisplay.textContent() || '0');
@@ -171,7 +177,7 @@ test.describe('Phase 0 Smoke Tests', () => {
     
     // Increment once to ensure we're not at 0
     await iframe.locator('button').filter({ hasText: '+' }).click();
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1500);
     
     // Get count after increment
     const counterDisplay = iframe.locator('div').filter({ hasText: /^[0-9]+$/ }).first();
