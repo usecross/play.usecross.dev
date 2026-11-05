@@ -193,7 +193,9 @@ That runs `bun run build` (shell output in `apps/shell/dist`) then `wrangler dep
 - Custom domain: `play.usecross.dev` (`routes` + `custom_domain: true`, which creates DNS in the `usecross.dev` zone)
 - `workers.dev` URL kept alongside the custom domain
 
-Requires Cloudflare credentials (`CLOUDFLARE_API_TOKEN` or `wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+Requires Cloudflare credentials (`CLOUDFLARE_API_TOKEN` or `bunx wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Check the active account with `bunx wrangler whoami`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+
+Run only one production build/deploy at a time, across all checkouts. Do not rebuild `apps/shell/dist` during an upload, and let an earlier deploy finish before publishing a newer revision. The deploy script does not enforce serialization; future CI must do so. See the [architecture deployment guide](./docs/architecture.md#deployment) for preflight and browser verification steps.
 
 ## Contributing
 

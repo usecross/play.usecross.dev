@@ -692,38 +692,56 @@ print(os.listdir('/examples/counter'))
 # ['app.py', 'templates', 'frontend', 'static']
 ```
 
-## Deployment (Phase 1+)
+## Deployment
 
-### Cloudflare Pages
+### Cloudflare Workers Static Assets
+
+From the repository root:
 
 ```bash
-bun run build
-npx wrangler pages deploy dist
+bun install --frozen-lockfile
+bunx wrangler whoami # Or bunx wrangler login if not authenticated
+bun run deploy
 ```
+
+`bun run deploy` builds the shell, then publishes its static assets using
+`wrangler.jsonc`. There is no Cloudflare Pages project or server-side Worker
+script. The browser Service Worker handles `/preview/` after registration;
+opening that path without an active Service Worker returns a 404, not the shell.
 
 ### Build Output
+
 ```
-dist/
-├── index.html           # Shell
-├── assets/
-│   ├── main-[hash].js   # Shell JS
-│   ├── sw-[hash].js     # Service Worker
-│   └── worker-[hash].js # Python Worker
-└── _headers             # CSP/CORS headers
+apps/shell/dist/
+├── index.html                    # Shell
+├── sw.js                         # Bundled runner Service Worker, scope /
+└── assets/
+    ├── main-[hash].js            # Shell JS and counter files
+    ├── python-worker-[hash].js   # Python Worker
+    └── asgi-bridge-[hash].py      # Python ASGI adapter
 ```
 
-### Cloudflare Workers Configuration
+Pyodide's WASM runtime and Python packages are downloaded from external CDNs
+and PyPI at runtime; they are not part of the static asset upload.
 
-```toml
-# wrangler.toml
-[build]
-command = "bun run build"
-directory = "dist"
+### Cloudflare Configuration
 
-[[routes]]
-pattern = "play.usecross.dev/*"
-zone_name = "usecross.dev"
-```
+`wrangler.jsonc` targets account `8a22aaadda6af656a4fe3835b90450dd` and Worker
+`play-usecross-dev`, with assets from `apps/shell/dist`. It keeps the
+`workers.dev` endpoint and binds only the custom domain `play.usecross.dev`.
+Deploying can create that hostname's DNS record in the `usecross.dev` zone.
+Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+
+Run only one production build/deploy at a time, and do not rebuild
+`apps/shell/dist` while Wrangler is uploading it. Wait for any earlier deploy
+to finish before publishing a newer revision. These are manual constraints,
+not enforced by the deploy script; future CI must serialize production
+deployments across revisions.
+
+Before publishing, run `bun run build` and `bunx wrangler deploy --dry-run`.
+After publishing, verify the shell and `/sw.js` over HTTPS, then open a fresh
+browser session and check that Python initializes and the counter increments
+and decrements. An HTTP-only check of the shell does not exercise the ASGI bridge.
 
 ## Next Steps
 
