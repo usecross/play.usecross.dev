@@ -19,19 +19,63 @@ import { CookieJarImpl } from './cookie-jar';
 
 declare const self: ServiceWorkerGlobalScope;
 
-let pythonWorker: Worker | null = null;
 const cookieJar = new CookieJarImpl();
 
-// Initialize Python worker
-function ensureWorker(): Worker {
-  if (!pythonWorker) {
-    pythonWorker = new Worker(new URL('./python-worker.ts', import.meta.url), {
-      type: 'module',
+// Communication with the main thread's Python worker
+// The main thread creates the worker and handles communication
+interface PendingRequest {
+  resolve: (response: HttpResponse) => void;
+  reject: (error: Error) => void;
+}
+
+const pendingRequests = new Map<string, PendingRequest>();
+
+// Monotonic counter for request IDs (per SW instance lifetime)
+let requestIdCounter = 0;
+
+// Use BroadcastChannel for SW ↔ page communication
+const pythonChannel = new BroadcastChannel('python-bridge');
+
+pythonChannel.addEventListener('message', (event) => {
+  if (event.data.type === 'python-response') {
+    const { requestId, response, error } = event.data;
+    const pending = pendingRequests.get(requestId);
+    
+    if (pending) {
+      pendingRequests.delete(requestId);
+      if (error) {
+        pending.reject(new Error(error));
+      } else {
+        pending.resolve(response);
+      }
+    }
+  }
+});
+
+// Send request to Python worker via BroadcastChannel
+async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
+  const requestId = `req_${++requestIdCounter}`;
+  
+  return new Promise((resolve, reject) => {
+    pendingRequests.set(requestId, { resolve, reject });
+    
+    console.log('[SW] Sending to Python via BroadcastChannel:', request.method, request.url);
+    
+    // Send via BroadcastChannel (more reliable than client.postMessage)
+    pythonChannel.postMessage({
+      type: 'python-request',
+      requestId,
+      request,
     });
     
-    console.log('[SW] Python worker created');
-  }
-  return pythonWorker;
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      if (pendingRequests.has(requestId)) {
+        pendingRequests.delete(requestId);
+        reject(new Error('Request timeout'));
+      }
+    }, 30000);
+  });
 }
 
 self.addEventListener('install', (event) => {
@@ -67,7 +111,6 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     const appPath = url.pathname.replace(/^\/preview/, '') || '/';
     const appUrl = url.origin + appPath + url.search + url.hash;
     
-    console.log('[SW] Handling request:', request.method, appPath);
     
     // Read request body if present
     let body: Uint8Array | undefined;
@@ -96,9 +139,9 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
       body,
     };
     
-    // Send to Python worker
-    const worker = ensureWorker();
-    const response = await sendHttpRequest(worker, httpRequest);
+    // Send to Python worker via main thread
+    console.log('[SW] Sending to Python:', httpRequest.method, httpRequest.url);
+    const response = await sendToPython(httpRequest);
     
     // Extract Set-Cookie headers and update cookie jar
     const setCookieHeaders: string[] = [];
@@ -135,36 +178,6 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
       }
     );
   }
-}
-
-/**
- * Send HTTP request to Python worker and wait for response
- */
-function sendHttpRequest(
-  worker: Worker,
-  request: HttpRequest
-): Promise<HttpResponse> {
-  return new Promise((resolve, reject) => {
-    const channel = new MessageChannel();
-    
-    channel.port1.onmessage = (event) => {
-      if (event.data.type === 'http-response') {
-        if (event.data.error) {
-          reject(new Error(event.data.error));
-        } else {
-          resolve(event.data.response);
-        }
-      }
-    };
-    
-    worker.postMessage(
-      {
-        type: 'http-request',
-        request,
-      },
-      [channel.port2]
-    );
-  });
 }
 
 export {};

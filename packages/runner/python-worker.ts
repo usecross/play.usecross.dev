@@ -18,6 +18,14 @@ declare const self: DedicatedWorkerGlobalScope;
 let pyodide: PyodideInterface | null = null;
 let initialized = false;
 
+// Queue to serialize concurrent http-request handling
+interface QueuedRequest {
+  request: HttpRequest;
+  port: MessagePort;
+}
+let requestQueue: QueuedRequest[] = [];
+let processingRequest = false;
+
 /**
  * Initialize Pyodide and load dependencies
  */
@@ -29,7 +37,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
 
   console.log('[Python Worker] Loading Pyodide...');
   pyodide = await loadPyodide({
-    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.0/full/',
+    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.8/full/',
   });
 
   console.log('[Python Worker] Installing packages...');
@@ -44,6 +52,8 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
     'fastapi',
     'starlette',
     'pydantic',
+    'python-multipart',  // Required for FastAPI form parsing
+    'jinja2',  // Required for Jinja2Templates
   ]);
   
   // Install CrossInertia (when available on PyPI, or from GitHub)
@@ -77,13 +87,25 @@ def inertia_dependency():
 
 fastapi_module.inertia_dependency = inertia_dependency
 fastapi_module.InertiaResponse = InertiaResponse
+
+# Register in sys.modules
+sys.modules['cross_inertia.fastapi'] = fastapi_module
     `);
   }
 
   // Load the ASGI bridge module
   console.log('[Python Worker] Loading ASGI bridge...');
   const asgiBridgeCode = await fetch(new URL('./asgi-bridge.py', import.meta.url)).then(r => r.text());
-  pyodide.runPython(asgiBridgeCode);
+  
+  // Write asgi_bridge.py to virtual filesystem
+  pyodide.FS.writeFile('/asgi_bridge.py', asgiBridgeCode);
+  
+  // Import it
+  pyodide.runPython(`
+import sys
+sys.path.insert(0, '/')
+import asgi_bridge
+  `);
 
   // Load user files into virtual filesystem if provided
   if (files) {
@@ -115,19 +137,22 @@ async function handleHttpRequest(request: HttpRequest): Promise<HttpResponse> {
   }
 
   // Convert request to Python-friendly format
+  // Pass as JSON string to avoid JsProxy conversion issues
   const requestData = {
     method: request.method,
     url: request.url,
     headers: request.headers,
-    body: request.body ? Array.from(request.body) : null,
+    body: request.body ? Array.from(request.body) : [],
   };
 
-  // Call the ASGI bridge
+  // Call the ASGI bridge using JSON for reliable conversion
+  pyodide.globals.set('request_json', JSON.stringify(requestData));
   const responseData = await pyodide.runPythonAsync(`
 import json
 from asgi_bridge import handle_http_request
 
-request_data = ${JSON.stringify(requestData)}
+# Parse JSON to Python dict
+request_data = json.loads(request_json)
 response = await handle_http_request(request_data)
 json.dumps(response)
   `);
@@ -169,6 +194,32 @@ for key in list(sys.modules.keys()):
   }
 }
 
+/**
+ * Process queued http-requests serially to avoid shared request_json conflicts
+ */
+async function processRequestQueue() {
+  if (processingRequest || requestQueue.length === 0) {
+    return;
+  }
+  
+  processingRequest = true;
+  
+  while (requestQueue.length > 0) {
+    const { request, port } = requestQueue.shift()!;
+    
+    try {
+      const response = await handleHttpRequest(request);
+      port.postMessage({ type: 'http-response', response });
+    } catch (error) {
+      console.error('[Python Worker] Error:', error);
+      const errorMessage = (error as Error).message;
+      port.postMessage({ type: 'http-response', error: errorMessage });
+    }
+  }
+  
+  processingRequest = false;
+}
+
 // Message handler
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const { data } = event;
@@ -183,8 +234,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       }
 
       case 'http-request': {
-        const response = await handleHttpRequest(data.request);
-        port?.postMessage({ type: 'http-response', response });
+        if (!port) {
+          console.error('[Python Worker] No port for http-request');
+          return;
+        }
+        // Queue the request for serial processing
+        requestQueue.push({ request: data.request, port });
+        processRequestQueue();
         break;
       }
 
@@ -199,8 +255,8 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     const errorMessage = (error as Error).message;
     
     if (port) {
-      if (data.type === 'http-request') {
-        port.postMessage({ type: 'http-response', error: errorMessage });
+      if (data.type === 'initialize') {
+        port.postMessage({ type: 'initialized', success: false, error: errorMessage });
       } else {
         port.postMessage({ type: 'error', error: errorMessage });
       }

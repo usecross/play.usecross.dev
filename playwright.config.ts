@@ -15,6 +15,7 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
   reporter: 'list',
+  timeout: 90_000, // 90s test timeout for Pyodide initialization in CI
   
   use: {
     baseURL: 'http://localhost:3000',
@@ -33,6 +34,5 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
-    cwd: './apps/shell',
   },
 });

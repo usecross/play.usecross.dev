@@ -11,7 +11,7 @@ Future phases: Streaming, WebSockets, proper lifespan
 import asyncio
 import json
 from typing import Dict, List, Any, Optional
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 
 async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -31,8 +31,12 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Parse URL
     parsed = urlparse(url)
-    path = parsed.path or '/'
+    # Unquote path to handle URL-encoded characters properly
+    path = unquote(parsed.path) if parsed.path else '/'
     query_string = parsed.query.encode('latin-1')
+    
+    # Determine default port based on scheme
+    default_port = 443 if parsed.scheme == 'https' else 80
     
     # Build ASGI scope
     scope = {
@@ -45,7 +49,7 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
         'query_string': query_string,
         'root_path': '',
         'headers': _build_asgi_headers(headers),
-        'server': (parsed.hostname or 'localhost', parsed.port or 80),
+        'server': tuple([parsed.hostname or 'localhost', parsed.port or default_port]),
     }
     
     # Response state
@@ -88,16 +92,12 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
         # Import the user's app
         # Phase 0: Expects app.py with a FastAPI app
         import sys
-        import importlib
         
         # Try to import from examples/counter/app.py
         if '/examples/counter' not in sys.path:
             sys.path.insert(0, '/examples/counter')
         
-        # Reload the app module to get latest code
-        if 'app' in sys.modules:
-            importlib.reload(sys.modules['app'])
-        
+        # Import without reload - app is loaded once at initialization
         from app import app as asgi_app
         
         # Invoke the ASGI app
@@ -114,8 +114,8 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
         response['headers'] = {'content-type': 'application/json'}
         response['body'] = error_body.encode('utf-8')
     
-    # Convert body to list for JSON serialization
-    body_list = list(response['body']) if response['body'] else []
+    # Convert body to list for JSON serialization, or null if empty
+    body_list = list(response['body']) if response['body'] else None
     
     return {
         'status': response['status'],
@@ -129,10 +129,11 @@ def _build_asgi_headers(headers: Dict[str, str]) -> List[tuple]:
     """Convert headers dict to ASGI format (list of byte tuples)"""
     asgi_headers = []
     for name, value in headers.items():
-        asgi_headers.append((
+        # Ensure tuple, not list (JSON parsing may create lists)
+        asgi_headers.append(tuple([
             name.lower().encode('latin-1'),
             value.encode('latin-1')
-        ))
+        ]))
     return asgi_headers
 
 
