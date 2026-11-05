@@ -4,7 +4,6 @@
  */
 
 import { counterFiles } from '@play.usecross.dev/runner/counter-files';
-import type { HttpRequest, HttpResponse } from '@play.usecross.dev/runner/types';
 
 // Status display
 const statusEl = document.getElementById('status') as HTMLElement;
@@ -74,7 +73,7 @@ async function initPythonWorker() {
             updateStatus('Ready');
             resolve();
           } else {
-            reject(new Error('Python initialization failed'));
+            reject(new Error(event.data.error || 'Python initialization failed'));
           }
         }
       } else if (event.data.type === 'error') {
@@ -155,32 +154,34 @@ async function initialize() {
       type: 'module',
     });
 
-    // Wait for the service worker to be active
-    if (registration.active) {
-      updateStatus('Service Worker registered');
-      console.log('[Shell] Service Worker ready:', registration);
-    } else {
-      await new Promise<void>((resolve) => {
-        const worker = registration.installing || registration.waiting;
-        if (worker) {
-          worker.addEventListener('statechange', () => {
-            if (worker.state === 'activated') {
-              updateStatus('Service Worker registered');
-              console.log('[Shell] Service Worker ready:', registration);
-              resolve();
-            }
-          });
-        }
+    await navigator.serviceWorker.ready;
+    // Activation precedes clients.claim(). Do not navigate the preview until
+    // this page is controlled, or its first request can hit the static host.
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve, reject) => {
+        const onControllerChange = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        const timeout = setTimeout(() => {
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+          reject(new Error('Service Worker did not take control'));
+        }, 10000);
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange, { once: true });
       });
     }
+    updateStatus('Service Worker registered');
+    console.log('[Shell] Service Worker ready:', registration);
     
     // Initialize Python worker
     await initPythonWorker();
     
-    // Service Worker is now active and will intercept requests to /preview/
-    // Reload the preview iframe so the first load is intercepted by the active SW
-    previewFrame.contentWindow?.location.reload();
+    // Keep the frame blank until BOTH the SW and Python app are ready.
+    previewFrame.src = '/preview/';
+    reloadBtn.disabled = false;
   } catch (error) {
+    pythonWorker?.terminate();
+    pythonWorker = null;
     console.error('[Shell] Failed to initialize:', error);
     updateStatus('Failed to initialize: ' + (error as Error).message);
   }
@@ -188,7 +189,7 @@ async function initialize() {
 
 // Reload button
 reloadBtn.addEventListener('click', () => {
-  previewFrame.contentWindow?.location.reload();
+  previewFrame.src = '/preview/';
 });
 
 // Listen for preview messages

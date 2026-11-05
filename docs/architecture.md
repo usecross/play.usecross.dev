@@ -1,6 +1,6 @@
 # CrossInertia Playground Architecture
 
-**Phase 0** technical documentation — how the in-browser playground works.
+**Phase 0 / real-library milestone** technical documentation. See [milestone evidence and the unreleased upstream dependency](./real-cross-inertia.md) before building or deploying this branch. Future-phase sections below are plans, not implemented features.
 
 ## Overview
 
@@ -14,147 +14,53 @@ No backend server is required. All HTTP requests, Python execution, and renderin
 
 ## Architecture Layers
 
+```text
+Shell (main thread)
+  ├── owns Python Web Worker (Pyodide + FastAPI + CrossInertia)
+  └── hosts preview iframe (/preview/*)
+           │ browser fetch
+           ▼
+Browser Service Worker
+  ├── virtual cookie jar
+  └── BroadcastChannel → shell → MessageChannel → Python worker
+                                                  │
+                                    ASGI scope with root_path=/preview
+                                                  │
+                                    FastAPI /counter route
+                                                  │
+                                    CrossInertia renderer
+                                      ├── VFS manifest + Jinja template
+                                      └── real Inertia JSON / HTML
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Browser (Main Thread)                                      │
-│  ┌─────────────────┐          ┌──────────────────┐         │
-│  │ Playground Shell│          │ Preview iframe   │         │
-│  │ (apps/shell)    │─────────▶│ /preview/*       │         │
-│  └─────────────────┘          └──────────────────┘         │
-│                                        │                     │
-│                                    fetch('/counter')        │
-│                                        │                     │
-└────────────────────────────────────────┼─────────────────────┘
-                                         │
-                                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Service Worker (sw.ts)                                     │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ 1. Intercept /preview/* requests                    │   │
-│  │ 2. Read/write virtual cookie jar                    │   │
-│  │ 3. Forward to Python Worker via MessageChannel      │   │
-│  │ 4. Return Response to browser                       │   │
-│  └─────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────┬─────────────────────┘
-                                         │ MessageChannel
-                                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Python Worker (python-worker.ts)                           │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ 1. Load Pyodide (Python WebAssembly runtime)        │   │
-│  │ 2. Install packages: FastAPI, CrossInertia, etc.    │   │
-│  │ 3. Mount virtual filesystem (user's Python files)   │   │
-│  │ 4. Load ASGI bridge (asgi-bridge.py)                │   │
-│  │ 5. Execute Python app on each request               │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                              │                               │
-│                              ▼                               │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ Pyodide Filesystem (in-memory)                      │   │
-│  │                                                      │   │
-│  │  /examples/counter/                                 │   │
-│  │  ├── app.py              ← User's FastAPI app       │   │
-│  │  ├── templates/                                     │   │
-│  │  │   └── app.html        ← Inertia root template   │   │
-│  │  └── static/build/.vite/                            │   │
-│  │      └── manifest.json   ← Synthetic Vite manifest  │   │
-│  │                                                      │   │
-│  │  /asgi-bridge.py         ← HTTP → ASGI adapter      │   │
-│  │  /wsgi-bridge.py         ← Django WSGI (Phase 2)    │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+
+The Python VFS includes `/asgi_bridge.py`, `/browser_inertia.py`, and the
+counter app/template/manifest/ESM/CSS files under `/examples/counter/`.
+Those contents come from the actual repository files through raw imports.
 
 ## Request Flow (Counter Example)
 
-### Initial Page Load
+### Initial page load
 
-```
-1. Browser navigates to /preview/counter
-   ↓
-2. Service Worker intercepts GET /preview/counter
-   ↓
-3. SW forwards to Python Worker:
-   HttpRequest {
-     method: 'GET',
-     url: 'http://localhost/counter',
-     headers: { accept: 'text/html', ... }
-   }
-   ↓
-4. Python Worker calls asgi-bridge.py → handle_http_request()
-   ↓
-5. ASGI bridge builds ASGI scope:
-   {
-     'type': 'http',
-     'method': 'GET',
-     'path': '/counter',
-     'headers': [(b'accept', b'text/html'), ...],
-     ...
-   }
-   ↓
-6. FastAPI app executes:
-   @app.get("/counter")
-   async def get_counter(request: Request):
-       return inertia_response(request, "Counter", {"count": 0})
-   ↓
-7. inertia_response() checks X-Inertia header:
-   - Not present → Return full HTML (app.html with page data)
-   ↓
-8. Response flows back:
-   HttpResponse {
-     status: 200,
-     headers: { 'content-type': 'text/html' },
-     body: <HTML with <div data-page="...">
-   }
-   ↓
-9. Service Worker returns Response to browser
-   ↓
-10. Browser renders HTML, Inertia.js initializes from data-page
-```
+1. The shell registers the Service Worker and waits for page control.
+2. It initializes Pyodide, installs the real upstream candidate wheel and direct dependency pins, writes the example VFS, and imports/validates the starter.
+3. Only after success does it navigate the iframe to `/preview/`.
+4. The Service Worker forwards the full request URL with `rootPath: "/preview"`.
+5. The ASGI scope retains `path=/preview/counter` and `root_path=/preview`. FastAPI matches the unprefixed `/counter` route.
+6. The route calls `get_inertia(request, response).render("Counter", {"count": counter_value})`.
+7. CrossInertia reads the VFS manifest and renders the real Jinja `inertia_head()` / `inertia_body()` helpers.
+8. Its template-generated `/preview/static/build/assets/app.js` and `app.css` requests travel through the same bridge and are served from the VFS.
 
-### Form Submission (Increment)
+### Form submission
 
-```
-1. User clicks "+" button
-   ↓
-2. Inertia form calls POST /counter with action=increment
-   ↓
-3. Service Worker intercepts POST /preview/counter
-   Headers: { 'X-Inertia': 'true', ... }
-   Body: FormData { action: 'increment' }
-   ↓
-4. Python Worker → ASGI bridge → FastAPI:
-   @app.post("/counter")
-   async def post_counter(request: Request, action: str = Form(...)):
-       counter_value += 1
-       return RedirectResponse("/counter", status_code=303)
-   ↓
-5. Response:
-   HttpResponse {
-     status: 303,
-     headers: { 'location': '/counter' },
-     body: null
-   }
-   ↓
-6. Inertia client follows redirect:
-   GET /counter with X-Inertia: true
-   ↓
-7. FastAPI processes second request:
-   @app.get("/counter")
-   - Detects X-Inertia header
-   - Returns JSON response:
-     {
-       "component": "Counter",
-       "props": { "count": 1 },
-       "url": "/counter",
-       "version": "1"
-     }
-   ↓
-8. Inertia client updates Counter component props
-   Counter re-renders with count=1
-```
+1. The real Inertia React client POSTs JSON to `/preview/counter`.
+2. FastAPI validates the action and updates the in-memory Python count.
+3. A 303 redirect targets `request.url_for("get_counter")`, preserving `/preview/counter`.
+4. Inertia follows the redirect with `X-Inertia: true`.
+5. CrossInertia returns the actual page JSON, including its manifest-derived asset version and validation error props.
+6. The browser client renders the new count without reloading the Python worker.
 
-This is the **complete Inertia protocol cycle** running entirely in-browser.
+Version conflicts, partial reload filtering, and initial HTML rendering are
+library behavior, not locally reimplemented protocol code.
 
 ## Key Components
 
@@ -164,11 +70,11 @@ This is the **complete Inertia protocol cycle** running entirely in-browser.
 
 **Responsibilities:**
 - Intercept `fetch` events for `/preview/*` URLs
-- Strip `/preview` prefix before forwarding to Python
+- Preserve the full URL and send `/preview` as the ASGI mount prefix
 - Manage virtual cookie jar:
   - Extract `Set-Cookie` from Python responses
   - Inject `Cookie` header into subsequent requests
-- Communicate with Python Worker via MessageChannel
+- Communicate through BroadcastChannel to the shell, then MessageChannel to its Python Worker
 - Return synthetic `Response` objects to the browser
 
 **Why Service Workers?**
@@ -277,83 +183,23 @@ const cookieHeader = cookieJar.getCookieHeader('http://localhost/counter');
 
 ## CrossInertia Integration
 
-### The Vite Manifest Problem
+The counter uses the real `cross_inertia.fastapi` renderer. Its Vite-shaped
+manifest maps `frontend/app.js` to `assets/app.js` and `assets/app.css`.
+The fixed ESM/CSS sources are mapped into the VFS; React/Inertia use pinned CDN
+imports. Dynamic esbuild-wasm compilation is not implemented yet.
 
-**Production CrossInertia** expects:
-```python
-# In production, CrossInertia reads:
-# static/build/.vite/manifest.json
+`BrowserInertiaResponse` inherits rendering unchanged and only forces
+production-mode detection, provides an explicit Vite URL to avoid port scans,
+and disables SSR. An explicit upstream runtime-mode option should eventually
+replace that subclass.
 
-{
-  "app.tsx": {
-    "file": "assets/app-[hash].js",
-    "css": ["assets/app-[hash].css"]
-  }
-}
-```
+Published 0.22.1 cannot render these plain props inside Pyodide's running event
+loop without attempting to start a thread. This branch therefore builds the
+exact upstream PR #146 candidate recorded in `packages/starters/runtime.json`.
+No CrossInertia source patch or fake-library fallback is applied here.
 
-**The Problem:**
-- Vite can't run inside Pyodide (no Node.js, no Vite dev server)
-- CrossInertia's asset resolver tries to connect to `http://localhost:5173`
-- We need CrossInertia to work without modifying the library
-
-**Phase 0 Solution: Synthetic Manifest**
-
-1. Place a fake `manifest.json` in Pyodide VFS at:
-   ```
-   /examples/counter/static/build/.vite/manifest.json
-   ```
-
-2. CrossInertia reads it and resolves asset URLs:
-   ```python
-   # CrossInertia sees this and generates asset URLs
-   # But we serve components inline in app.html (Phase 0)
-   ```
-
-3. Phase 0 compromise: **Inline components in app.html**
-   - React/Inertia loaded from CDN
-   - Counter component written inline with `createElement()`
-   - Synthetic manifest exists but isn't actually used yet
-
-**Phase 1+ Solution: esbuild-wasm**
-
-Future phases will:
-1. Bundle `frontend/app.tsx` → `static/build/assets/app-[hash].js`
-2. Store bundled files in Pyodide VFS
-3. Service Worker intercepts `/static/build/*` and serves from VFS
-4. Synthetic manifest points to real compiled assets
-
-This avoids needing Vite while preserving CrossInertia's production path.
-
-### Bypassing Development Server Probes
-
-**Current CrossInertia behavior** (may need adjustment):
-```python
-# Tries to detect Vite dev server
-def _detect_vite():
-    try:
-        response = httpx.get("http://localhost:5173")
-        return response.status_code == 200
-    except:
-        return False
-```
-
-**Phase 0 workaround:**
-- Counter example uses manual Inertia responses
-- Doesn't rely on CrossInertia's asset injection yet
-
-**Upstream change recommendation:**
-```python
-# Proposed: Configurable asset resolver
-class BrowserAssetResolver:
-    def get_entry_url(self) -> str:
-        return "/static/build/app.js"  # From manifest
-    
-    def should_probe_vite(self) -> bool:
-        return False  # Disable in browser mode
-```
-
-This would let the playground use real CrossInertia without a fork.
+See [real CrossInertia milestone](./real-cross-inertia.md) for the regression
+evidence, remaining async-prop limitations, and release prerequisite.
 
 ## PythonFrameworkRuntime Interface
 
@@ -693,6 +539,8 @@ print(os.listdir('/examples/counter'))
 ```
 
 ## Deployment
+
+**Candidate dependency warning:** this branch uses an unreleased upstream wheel. Normal `bun run deploy` is blocked; first release upstream PR #146 and switch to the published pin. See [milestone details](./real-cross-inertia.md). Local builds and Wrangler dry-runs remain available.
 
 ### Cloudflare Workers Static Assets
 

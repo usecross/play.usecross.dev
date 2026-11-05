@@ -11,6 +11,8 @@
 /// <reference lib="webworker" />
 
 import { loadPyodide, type PyodideInterface } from 'pyodide';
+import requirements from '../starters/requirements.txt?raw';
+import runtime from '../starters/runtime.json';
 import type { HttpRequest, HttpResponse, WorkerMessage, VirtualFileSystem } from './types';
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -37,7 +39,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
 
   console.log('[Python Worker] Loading Pyodide...');
   pyodide = await loadPyodide({
-    indexURL: 'https://cdn.jsdelivr.net/pyodide/v0.27.8/full/',
+    indexURL: `https://cdn.jsdelivr.net/pyodide/v${runtime.pyodideVersion}/full/`,
   });
 
   console.log('[Python Worker] Installing packages...');
@@ -46,56 +48,28 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
   await pyodide.loadPackage('micropip');
   const micropip = pyodide.pyimport('micropip');
   
-  // Install FastAPI stack
-  // Note: In Phase 0, we're using published wheels from PyPI
-  await micropip.install([
-    'fastapi',
-    'starlette',
-    'pydantic',
-    'python-multipart',  // Required for FastAPI form parsing
-    'jinja2',  // Required for Jinja2Templates
-  ]);
-  
-  // Install CrossInertia (when available on PyPI, or from GitHub)
-  // For Phase 0, this may need adjustment based on published package availability
+  const packages = requirements.split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'));
   try {
-    await micropip.install('cross-inertia');
-  } catch (error) {
-    console.warn('[Python Worker] CrossInertia not available, using stub');
-    // Install a minimal stub for Phase 0 testing
-    pyodide.runPython(`
-import sys
-from types import ModuleType
-
-# Minimal CrossInertia stub for Phase 0
-cross_inertia = ModuleType('cross_inertia')
-sys.modules['cross_inertia'] = cross_inertia
-
-fastapi_module = ModuleType('fastapi')
-cross_inertia.fastapi = fastapi_module
-
-class InertiaResponse:
-    def __init__(self, component, props):
-        self.component = component
-        self.props = props
-
-def inertia_dependency():
-    class Inertia:
-        def render(self, component, props):
-            return InertiaResponse(component, props)
-    return Inertia()
-
-fastapi_module.inertia_dependency = inertia_dependency
-fastapi_module.InertiaResponse = InertiaResponse
-
-# Register in sys.modules
-sys.modules['cross_inertia.fastapi'] = fastapi_module
-    `);
+    // cross-web needs newer typing extensions than Pyodide's default. Install
+    // that pin BEFORE loading Pydantic, which otherwise installs the old wheel.
+    await micropip.install(packages.filter(pkg => pkg.startsWith('typing-extensions==')));
+    await pyodide.loadPackage(['pydantic', 'MarkupSafe']);
+    // Installation failures are fatal: never substitute a fake CrossInertia.
+    const wheelUrl = new URL(runtime.crossInertia.wheelPath, self.location.origin).href;
+    await micropip.install([wheelUrl, ...packages]);
+  } finally {
+    micropip.destroy();
   }
 
   // Load the ASGI bridge module
   console.log('[Python Worker] Loading ASGI bridge...');
-  const asgiBridgeCode = await fetch(new URL('./asgi-bridge.py', import.meta.url)).then(r => r.text());
+  const bridgeResponse = await fetch(new URL('./asgi-bridge.py', import.meta.url));
+  if (!bridgeResponse.ok) {
+    throw new Error(`ASGI bridge download failed: HTTP ${bridgeResponse.status}`);
+  }
+  const asgiBridgeCode = await bridgeResponse.text();
   
   // Write asgi_bridge.py to virtual filesystem
   pyodide.FS.writeFile('/asgi_bridge.py', asgiBridgeCode);
@@ -124,6 +98,17 @@ import asgi_bridge
     }
   }
 
+  // Import the real package and starter before announcing readiness. Missing
+  // imports/templates/configuration must fail initialization, not the first visit.
+  pyodide.runPython(`
+import cross_inertia
+sys.path.insert(0, '/examples/counter')
+from app import app, response as inertia_response
+inertia_response.get_manifest()
+inertia_response.templates.get_template('app.html')
+print(f'[Python Worker] CrossInertia {cross_inertia.__version__} loaded from {cross_inertia.__file__}')
+  `);
+
   initialized = true;
   console.log('[Python Worker] Initialization complete');
 }
@@ -141,6 +126,7 @@ async function handleHttpRequest(request: HttpRequest): Promise<HttpResponse> {
   const requestData = {
     method: request.method,
     url: request.url,
+    rootPath: request.rootPath || '',
     headers: request.headers,
     body: request.body ? Array.from(request.body) : [],
   };

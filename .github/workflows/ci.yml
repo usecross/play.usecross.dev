@@ -26,6 +26,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Setup uv (build the pinned upstream runtime wheel)
+        uses: astral-sh/setup-uv@v6
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -43,11 +46,20 @@ jobs:
         if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: bun test:install
 
+      - name: Typecheck runner and shell
+        run: bun run typecheck
+
+      - name: Test real Python renderer without threads or Vite probes
+        run: bun run test:python
+
       - name: Run Playwright tests
         run: bun run test
         env:
           # Increase timeouts for CI environment (slower than local)
           PLAYWRIGHT_TIMEOUT: 60000
+
+      - name: Test production assets with Cloudflare's local runtime
+        run: bun run test:production
 
       - name: Upload test results
         if: failure()

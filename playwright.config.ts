@@ -13,9 +13,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: process.env.CI ? 1 : 2,
   reporter: 'list',
-  timeout: 90_000, // 90s test timeout for Pyodide initialization in CI
+  timeout: 180_000, // Includes Python/wheel downloads and the actual browser HTTP cycle
   
   use: {
     baseURL: 'http://localhost:3000',
@@ -25,7 +25,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], channel: process.env.PLAYWRIGHT_CHANNEL || undefined },
     },
   ],
 

@@ -1,55 +1,15 @@
-# Starters Package
+# Starter runtime dependencies
 
-Phase 0: Documentation for curated dependencies
-Phase 1+: Actual starter templates and package manifests
+The current starter is the fixed FastAPI/React counter in `examples/counter/`.
 
-## Python Packages (PyPI wheels for Pyodide)
+- `runtime.json` pins Pyodide and the exact upstream CrossInertia source revision/archive hash.
+- `requirements.txt` pins direct Python dependencies. This is not a full transitive lockfile.
+- Pyodide provides the WASM-compatible `pydantic_core` and MarkupSafe builds.
+- React 19.3.1 and Inertia React 3.11.0 are pinned CDN imports in the real Jinja template.
+- The fixed browser-native ESM/CSS sources are mapped to Vite-shaped VFS build paths. There is no dynamic frontend bundler yet.
 
-### Core Framework Stack
-- **fastapi** - FastAPI framework
-- **starlette** - ASGI toolkit (FastAPI dependency)
-- **pydantic** - Data validation (FastAPI dependency)
-- **cross-inertia** - Inertia.js protocol for Python frameworks
+**Temporary unreleased dependency:** the PyPI CrossInertia 0.22.1 wheel tries to create a thread during prop resolution and fails in Pyodide. We build unchanged upstream PR #146 at the revision recorded in `runtime.json`. The generated wheel reports the upstream source version but is not the published PyPI artifact. Replace this source pin with the next compatible published release.
 
-### Database (Phase 2+)
-- **sqlite3** - Built into Pyodide 314.0+
-- No additional packages needed for SQLite
+`bun run prepare:runtime` downloads and checks the source archive, builds the wheel using `uv`, and caches it under ignored `apps/shell/public/wheels/`. No wheel binaries are committed. Dependency failures stop initialization; no fake library is substituted.
 
-### Future Frameworks (Phase 3+)
-- **django** - Django framework
-- **litestar** - Litestar framework
-
-## JavaScript/TypeScript Packages (npm)
-
-### React Stack
-- **react** @ ^18.3.0
-- **react-dom** @ ^18.3.0
-- **@types/react** @ ^18.3.0
-- **@types/react-dom** @ ^18.3.0
-
-### Inertia
-- **@inertiajs/react** @ ^1.0.0 (or latest with Live Props support)
-
-### Build Tools (Phase 1+)
-- **esbuild-wasm** - In-browser bundling
-- **typescript** - Type checking
-
-### CSS (Phase 1+)
-- TBD: Tailwind CSS or similar lightweight framework
-
-## Phase 0 Approach
-
-For Phase 0, we're using:
-- CDN links for React + ReactDOM + Inertia (in counter example template)
-- Published PyPI wheels loaded via micropip
-- Inline components for simplicity
-
-This avoids bundling complexity while proving the HTTP cycle.
-
-## Phase 1+ Approach
-
-Later phases will:
-- Bundle React/Inertia/TypeScript with esbuild-wasm
-- Support editable components via Monaco
-- Provide starter templates for FastAPI, Django, Litestar
-- Include pinned package versions for reproducibility
+See [milestone notes](../../docs/real-cross-inertia.md) for compatibility evidence and deployment restrictions. SQLite/IDBFS, editor templates, additional frameworks, and dynamic bundling are later milestones.

@@ -1,338 +1,85 @@
-"""
-Counter Example - FastAPI + CrossInertia
+"""Real CrossInertia + FastAPI running in Pyodide.
 
-Phase 0 proof: Full HTTP cycle with Inertia protocol
-- GET /counter -> render Counter page
-- POST /counter -> increment -> 303 redirect
-- Demonstrates real ASGI request/response through Pyodide
-
-Phase 0 note: SQLite persistence in-memory for now
-Phase 1+: IDBFS for persistence across reloads
+State is intentionally in-memory in this milestone. SQLite/IDBFS follows later.
+All routes are async: Pyodide cannot run Starlette's thread-pool file handlers
+or FastAPI's synchronous dependencies.
 """
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import RedirectResponse, HTMLResponse
-import json
-import html
+import mimetypes
+from pathlib import Path
+from typing import Literal
+
+import cross_inertia
+from browser_inertia import BrowserInertiaResponse
+from cross_inertia.fastapi import get_inertia
+from fastapi import FastAPI, HTTPException, Request
+from pydantic import BaseModel
+from starlette.responses import RedirectResponse, Response
+
+BASE_DIR = Path(__file__).resolve().parent
+BUILD_DIR = BASE_DIR / "static" / "build"
+
+response = BrowserInertiaResponse(
+    template_dir=str(BASE_DIR / "templates"),
+    manifest_path=str(BUILD_DIR / ".vite" / "manifest.json"),
+    vite_entry="frontend/app.js",
+    asset_url_prefix="/preview/static/build",
+)
 
 app = FastAPI()
-
-# In-memory counter (Phase 0)
-# Phase 1+: SQLite with IDBFS persistence
 counter_value = 0
 
 
-def is_inertia_request(request: Request) -> bool:
-    """Check if request is an Inertia request"""
-    return request.headers.get("x-inertia") == "true"
-
-
-def inertia_response(request: Request, component: str, props: dict):
-    """Build an Inertia response (HTMLResponse workaround for Pyodide)"""
-    url = str(request.url)
-    
-    if is_inertia_request(request):
-        # Inertia JSON response
-        page_data = {
-            "component": component,
-            "props": props,
-            "url": url,
-            "version": "1",
-        }
-        return HTMLResponse(
-            content=json.dumps(page_data),
-            headers={
-                "X-Inertia": "true",
-                "Content-Type": "application/json",
-            }
-        )
-    else:
-        # Initial HTML response with inlined Inertia root
-        # Using HTMLResponse instead of TemplateResponse due to Pyodide/Jinja2 compatibility
-        page_data = {
-            "component": component,
-            "props": props,
-            "url": url,
-            "version": "1",
-        }
-        # Don't escape - browser handles attribute encoding
-        page_json = json.dumps(page_data)
-        
-        html_content = f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Counter - CrossInertia Playground</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-        }}
-        
-        #app {{
-            width: 100%;
-            max-width: 600px;
-        }}
-    </style>
-</head>
-<body>
-    <div id="app" data-page="{page_json}"></div>
-    
-    <script type="importmap">
-    {{
-        "imports": {{
-            "react": "https://esm.sh/react@19.3.1",
-            "react-dom": "https://esm.sh/react-dom@19.3.1",
-            "react-dom/client": "https://esm.sh/react-dom@19.3.1/client",
-            "@inertiajs/react": "https://esm.sh/@inertiajs/react@3.11.0"
-        }}
-    }}
-    </script>
-    
-    <script type="module">
-        import {{ createElement as h, useState }} from 'react';
-        import {{ createRoot }} from 'react-dom/client';
-        import {{ createInertiaApp, router }} from '@inertiajs/react';
-        
-        function Counter({{ count }}) {{
-            const [processing, setProcessing] = useState(false);
-            
-            const incrementForm = useForm({{
-                action: 'increment'
-            }});
-            
-            const decrementForm = useForm({{
-                action: 'decrement'
-            }});
-            
-            const resetForm = useForm({{
-                action: 'reset'
-            }});
-            
-            return h('div', {{
-                style: {{
-                    background: 'white',
-                    borderRadius: '12px',
-                    padding: '3rem',
-                    boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-                    textAlign: 'center'
-                }}
-            }}, [
-                h('h1', {{
-                    key: 'title',
-                    style: {{
-                        fontSize: '2.5rem',
-                        marginBottom: '1rem',
-                        color: '#1a1a1a'
-                    }}
-                }}, 'Counter'),
-                
-                h('div', {{
-                    key: 'count',
-                    style: {{
-                        fontSize: '4rem',
-                        fontWeight: 'bold',
-                        color: '#667eea',
-                        margin: '2rem 0'
-                    }}
-                }}, count),
-                
-                h('div', {{
-                    key: 'buttons',
-                    style: {{
-                        display: 'flex',
-                        gap: '1rem',
-                        justifyContent: 'center',
-                        marginTop: '2rem'
-                    }}
-                }}, [
-                    h('form', {{
-                        key: 'dec',
-                        onSubmit: (e) => {{
-                            e.preventDefault();
-                            decrementForm.post('/counter');
-                        }}
-                    }}, [
-                        h('button', {{
-                            key: 'btn',
-                            type: 'submit',
-                            disabled: decrementForm.processing,
-                            style: {{
-                                padding: '1rem 2rem',
-                                fontSize: '1.25rem',
-                                background: '#dc3545',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                fontWeight: '600',
-                                transition: 'all 0.2s',
-                                opacity: decrementForm.processing ? 0.6 : 1
-                            }}
-                        }}, '−')
-                    ]),
-                    
-                    h('form', {{
-                        key: 'inc',
-                        onSubmit: (e) => {{
-                            e.preventDefault();
-                            incrementForm.post('/counter');
-                        }}
-                    }}, [
-                        h('button', {{
-                            key: 'btn',
-                            type: 'submit',
-                            disabled: incrementForm.processing,
-                            style: {{
-                                padding: '1rem 2rem',
-                                fontSize: '1.25rem',
-                                background: '#667eea',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                fontWeight: '600',
-                                transition: 'all 0.2s',
-                                opacity: incrementForm.processing ? 0.6 : 1
-                            }}
-                        }}, '+')
-                    ]),
-                    
-                    h('form', {{
-                        key: 'reset',
-                        onSubmit: (e) => {{
-                            e.preventDefault();
-                            resetForm.post('/counter');
-                        }}
-                    }}, [
-                        h('button', {{
-                            key: 'btn',
-                            type: 'submit',
-                            disabled: resetForm.processing,
-                            style: {{
-                                padding: '1rem 2rem',
-                                fontSize: '1rem',
-                                background: '#6c757d',
-                                color: 'white',
-                                border: 'none',
-                                borderRadius: '8px',
-                                cursor: 'pointer',
-                                fontWeight: '600',
-                                transition: 'all 0.2s',
-                                opacity: resetForm.processing ? 0.6 : 1
-                            }}
-                        }}, 'Reset')
-                    ])
-                ]),
-                
-                h('p', {{
-                    key: 'note',
-                    style: {{
-                        marginTop: '2rem',
-                        color: '#666',
-                        fontSize: '0.875rem'
-                    }}
-                }}, 'Full Inertia POST → 303 → render via Pyodide ASGI')
-            ]);
-        }}
-        
-        const components = {{
-            Counter: Counter
-        }};
-        
-        // Manually get initial page from data-page attribute
-        const appEl = document.getElementById('app');
-        const dataPage = appEl?.getAttribute('data-page');
-        const initialPage = dataPage ? JSON.parse(dataPage) : null;
-        
-        if (!initialPage) {{
-            console.error('No initial page data found');
-            throw new Error('Missing data-page attribute');
-        }}
-        
-        createInertiaApp({{
-            page: initialPage,
-            resolve: name => components[name],
-            setup({{ el, App, props }}) {{
-                createRoot(el).render(h(App, props));
-            }},
-        }});
-    <\/script>
-</body>
-</html>"""
-        
-        return HTMLResponse(content=html_content)
+class CounterAction(BaseModel):
+    action: Literal["increment", "decrement", "reset"]
 
 
 @app.get("/")
-async def index(request: Request):
-    """Root redirects to counter (relative URL preserves prefix)"""
-    return RedirectResponse("counter", status_code=303)
+async def index(request: Request) -> RedirectResponse:
+    return RedirectResponse(request.url_for("get_counter"), status_code=303)
 
 
 @app.get("/counter")
-async def get_counter(request: Request):
-    """Display counter page"""
-    global counter_value
-    
-    return inertia_response(
-        request,
-        "Counter",
-        {
-            "count": counter_value,
-        }
-    )
+async def get_counter(request: Request) -> Response:
+    # Call the published dependency directly inside an async route, avoiding
+    # FastAPI's thread-pool dispatch for synchronous dependencies.
+    inertia = get_inertia(request, response)
+    return inertia.render("Counter", {"count": counter_value})
 
 
 @app.post("/counter")
-async def post_counter(request: Request):
-    """
-    Handle counter actions
-    POST with JSON body {action: 'increment' | 'decrement' | 'reset'}
-    """
+async def post_counter(request: Request, body: CounterAction) -> RedirectResponse:
     global counter_value
-    
-    # Parse JSON body
-    body = await request.json()
-    action = body.get("action")
-    
-    if action == "increment":
+
+    if body.action == "increment":
         counter_value += 1
-    elif action == "decrement":
+    elif body.action == "decrement":
         counter_value -= 1
-    elif action == "reset":
+    else:
         counter_value = 0
-    
-    # Inertia POST -> 303 redirect pattern (relative URL)
-    return RedirectResponse("counter", status_code=303)
+
+    return RedirectResponse(request.url_for("get_counter"), status_code=303)
 
 
 @app.get("/static/build/{path:path}")
-async def serve_static(path: str):
-    """
-    Serve static assets
-    
-    Phase 0: Direct serve from virtual FS
-    The synthetic Vite manifest points to these files
-    """
-    # This will be intercepted by SW or served from VFS
-    # For Phase 0, assets may be CDN links or inline
-    return HTMLResponse("Static asset: " + path, status_code=404)
+async def serve_static(path: str) -> Response:
+    # StaticFiles/FileResponse use threads. VFS reads are synchronous and local.
+    # Expose only built assets, not the manifest or arbitrary example sources.
+    asset_root = BUILD_DIR / "assets"
+    asset = (BUILD_DIR / path).resolve()
+    if not asset.is_relative_to(asset_root) or not asset.is_file():
+        raise HTTPException(status_code=404)
+    return Response(
+        asset.read_bytes(),
+        media_type=mimetypes.guess_type(asset.name)[0] or "application/octet-stream",
+    )
 
 
-# Health check
 @app.get("/health")
-async def health():
-    return {"status": "ok", "counter": counter_value}
+async def health() -> dict[str, object]:
+    return {
+        "status": "ok",
+        "counter": counter_value,
+        "cross_inertia_version": cross_inertia.__version__,
+        "response_class": f"{type(response).__module__}.{type(response).__name__}",
+    }

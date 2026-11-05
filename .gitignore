@@ -37,6 +37,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Generated upstream candidate wheel (see packages/starters/runtime.json)
+/apps/shell/public/wheels/
+
+# Python test/build caches
+__pycache__/
+*.pyc
+.venv/
+
 # Wrangler
 .wrangler/
 .dev.vars

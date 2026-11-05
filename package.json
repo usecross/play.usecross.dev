@@ -7,11 +7,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun --filter @play.usecross.dev/shell dev",
-    "build": "bun --filter @play.usecross.dev/shell build",
+    "prepare:runtime": "bun scripts/prepare-runtime.ts",
+    "dev": "bun run prepare:runtime && bun --filter @play.usecross.dev/shell dev",
+    "build": "bun run prepare:runtime && bun --filter @play.usecross.dev/shell build",
     "preview": "bun --filter @play.usecross.dev/shell preview",
-    "deploy": "bun run build && wrangler deploy",
-    "test": "npx playwright test",
+    "deploy": "bun scripts/check-runtime-release.ts && bun run build && wrangler deploy",
+    "test": "playwright test",
+    "test:production": "playwright test --config playwright.production.config.ts",
+    "test:python": "bun run prepare:runtime && bun scripts/test-python.ts",
+    "typecheck": "tsc --noEmit -p packages/runner/tsconfig.json && tsc --noEmit -p apps/shell/tsconfig.json",
     "test:install": "npx playwright install --with-deps chromium"
   },
   "devDependencies": {
@@ -21,6 +25,6 @@
     "wrangler": "^4.50.0"
   },
   "engines": {
-    "bun": ">=1.0.0"
+    "bun": ">=1.4.0"
   }
 }
