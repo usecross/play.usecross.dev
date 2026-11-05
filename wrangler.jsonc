@@ -1,0 +1,29 @@
+/**
+ * Cloudflare Workers + Static Assets for play.usecross.dev
+ *
+ * Assets-only: the shell is a Vite static site. Vite bundles
+ * `apps/shell/sw.ts` (re-export of `@play.usecross.dev/runner/sw`) to `/sw.js`.
+ * `/preview/` is intercepted by that browser Service Worker (scope `/`), not by
+ * a Cloudflare Worker. SPA fallback is intentionally off so `/preview/` is not
+ * rewritten to the playground shell before the SW takes over.
+ *
+ * No Worker `main` is needed: SW lives at origin root (default max scope `/`),
+ * and Pyodide WASM is loaded from the jsDelivr CDN rather than this origin.
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "play-usecross-dev",
+	"account_id": "8a22aaadda6af656a4fe3835b90450dd",
+	"compatibility_date": "2026-11-05",
+	"workers_dev": true,
+	"preview_urls": true,
+	"assets": {
+		"directory": "./apps/shell/dist",
+	},
+	"routes": [
+		{
+			"pattern": "play.usecross.dev",
+			"custom_domain": true,
+		},
+	],
+}
