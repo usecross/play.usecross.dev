@@ -147,6 +147,10 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     // Send to Python worker via main thread
     const response = await sendToPython(httpRequest);
     
+    console.log('[SW] Python response:', response.status, response.statusText, 
+                'Location:', response.headers['location'] || 'none',
+                'X-Inertia:', response.headers['x-inertia'] || 'none');
+    
     // Extract Set-Cookie headers and update cookie jar
     const setCookieHeaders: string[] = [];
     Object.entries(response.headers).forEach(([key, value]) => {
