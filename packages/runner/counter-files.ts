@@ -256,17 +256,11 @@ def inertia_response(request: Request, component: str, props: dict):
             Counter: Counter
         }};
         
+        // Inertia v3 auto-discovers #app and data-page
         createInertiaApp({{
-            resolve: (name) => {{
-                const Component = components[name];
-                if (!Component) {{
-                    throw new Error('Component ' + name + ' not found');
-                }}
-                return Component;
-            }},
+            resolve: name => components[name],
             setup({{ el, App, props }}) {{
-                const root = createRoot(el);
-                root.render(h(App, props));
+                createRoot(el).render(h(App, props));
             }},
         }});
     <\/script>
