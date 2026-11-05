@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - cursor/wire-pyodide-asgi-bridge-2820
   pull_request:
 
 # Cancel in-progress runs for the same workflow on the same branch/PR
@@ -22,36 +21,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          version: 10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
+          bun-version: latest
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen
 
       - name: Cache Playwright browsers
         id: playwright-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             playwright-${{ runner.os }}-
 
       - name: Install Playwright browsers
         # Only install if cache missed to save time
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: pnpm test:install
+        run: bun test:install
 
       - name: Run Playwright tests
-        run: pnpm test
+        run: bun test
         env:
           # Increase timeouts for CI environment (slower than local)
           PLAYWRIGHT_TIMEOUT: 60000
