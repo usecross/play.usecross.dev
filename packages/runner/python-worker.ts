@@ -18,6 +18,14 @@ declare const self: DedicatedWorkerGlobalScope;
 let pyodide: PyodideInterface | null = null;
 let initialized = false;
 
+// Queue to serialize concurrent http-request handling
+interface QueuedRequest {
+  request: HttpRequest;
+  port: MessagePort;
+}
+let requestQueue: QueuedRequest[] = [];
+let processingRequest = false;
+
 /**
  * Initialize Pyodide and load dependencies
  */
@@ -186,6 +194,32 @@ for key in list(sys.modules.keys()):
   }
 }
 
+/**
+ * Process queued http-requests serially to avoid shared request_json conflicts
+ */
+async function processRequestQueue() {
+  if (processingRequest || requestQueue.length === 0) {
+    return;
+  }
+  
+  processingRequest = true;
+  
+  while (requestQueue.length > 0) {
+    const { request, port } = requestQueue.shift()!;
+    
+    try {
+      const response = await handleHttpRequest(request);
+      port.postMessage({ type: 'http-response', response });
+    } catch (error) {
+      console.error('[Python Worker] Error:', error);
+      const errorMessage = (error as Error).message;
+      port.postMessage({ type: 'http-response', error: errorMessage });
+    }
+  }
+  
+  processingRequest = false;
+}
+
 // Message handler
 self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   const { data } = event;
@@ -200,8 +234,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       }
 
       case 'http-request': {
-        const response = await handleHttpRequest(data.request);
-        port?.postMessage({ type: 'http-response', response });
+        if (!port) {
+          console.error('[Python Worker] No port for http-request');
+          return;
+        }
+        // Queue the request for serial processing
+        requestQueue.push({ request: data.request, port });
+        processRequestQueue();
         break;
       }
 
@@ -216,8 +255,8 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
     const errorMessage = (error as Error).message;
     
     if (port) {
-      if (data.type === 'http-request') {
-        port.postMessage({ type: 'http-response', error: errorMessage });
+      if (data.type === 'initialize') {
+        port.postMessage({ type: 'initialized', success: false, error: errorMessage });
       } else {
         port.postMessage({ type: 'error', error: errorMessage });
       }

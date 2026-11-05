@@ -30,15 +30,58 @@ async function initPythonWorker() {
   // Initialize with counter files
   return new Promise<void>((resolve, reject) => {
     const channel = new MessageChannel();
+    let settled = false;
+    
+    // Timeout after 90 seconds
+    const timeoutId = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        reject(new Error('Python worker initialization timeout (90s)'));
+      }
+    }, 90000);
+    
+    // Handle worker errors
+    const errorHandler = (error: ErrorEvent) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        reject(new Error(`Python worker error: ${error.message}`));
+      }
+    };
+    
+    const messageErrorHandler = () => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        reject(new Error('Python worker message error'));
+      }
+    };
+    
+    pythonWorker!.onerror = errorHandler;
+    pythonWorker!.onmessageerror = messageErrorHandler;
     
     channel.port1.onmessage = (event) => {
       if (event.data.type === 'initialized') {
-        if (event.data.success) {
-          console.log('[Shell] Python worker initialized');
-          updateStatus('Ready');
-          resolve();
-        } else {
-          reject(new Error('Python initialization failed'));
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          // Clean up error handlers on success
+          pythonWorker!.onerror = null;
+          pythonWorker!.onmessageerror = null;
+          
+          if (event.data.success) {
+            console.log('[Shell] Python worker initialized');
+            updateStatus('Ready');
+            resolve();
+          } else {
+            reject(new Error('Python initialization failed'));
+          }
+        }
+      } else if (event.data.type === 'error') {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(new Error(event.data.error || 'Unknown initialization error'));
         }
       }
     };

@@ -30,6 +30,9 @@ interface PendingRequest {
 
 const pendingRequests = new Map<string, PendingRequest>();
 
+// Monotonic counter for request IDs (per SW instance lifetime)
+let requestIdCounter = 0;
+
 // Use BroadcastChannel for SW ↔ page communication
 const pythonChannel = new BroadcastChannel('python-bridge');
 
@@ -51,7 +54,7 @@ pythonChannel.addEventListener('message', (event) => {
 
 // Send request to Python worker via BroadcastChannel
 async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
-  const requestId = Math.random().toString(36).substring(7);
+  const requestId = `req_${++requestIdCounter}`;
   
   return new Promise((resolve, reject) => {
     pendingRequests.set(requestId, { resolve, reject });
