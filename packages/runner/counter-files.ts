@@ -260,7 +260,7 @@ def inertia_response(request: Request, component: str, props: dict):
             resolve: (name) => {{
                 const Component = components[name];
                 if (!Component) {{
-                    throw new Error(`Component ${{name}} not found`);
+                    throw new Error('Component ' + name + ' not found');
                 }}
                 return Component;
             }},
