@@ -54,6 +54,11 @@ async function initPythonWorker() {
 }
 
 // Handle messages from Service Worker (requests to Python)
+// Try both event listeners to debug
+window.addEventListener('message', (event) => {
+  console.log('[Shell] Window message:', event.data);
+});
+
 navigator.serviceWorker.addEventListener('message', async (event) => {
   console.log('[Shell] Received SW message:', event.data.type);
   

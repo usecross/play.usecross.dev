@@ -30,8 +30,10 @@ interface PendingRequest {
 
 const pendingRequests = new Map<string, PendingRequest>();
 
-// Listen for messages from the main thread
-self.addEventListener('message', (event) => {
+// Use BroadcastChannel for SW ↔ page communication
+const pythonChannel = new BroadcastChannel('python-bridge');
+
+pythonChannel.addEventListener('message', (event) => {
   if (event.data.type === 'python-response') {
     const { requestId, response, error } = event.data;
     const pending = pendingRequests.get(requestId);
@@ -47,38 +49,20 @@ self.addEventListener('message', (event) => {
   }
 });
 
-// Send request to Python worker via main thread
+// Send request to Python worker via BroadcastChannel
 async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
   const requestId = Math.random().toString(36).substring(7);
   
   return new Promise((resolve, reject) => {
     pendingRequests.set(requestId, { resolve, reject });
     
-    // Send to all clients (the main thread will forward to Python worker)
-    self.clients.matchAll().then(clients => {
-      console.log('[SW] sendToPython: found', clients.length, 'clients');
-      clients.forEach((client, i) => {
-        console.log(`[SW]   client[${i}]:`, client.url, 'type:', client.type);
-      });
-      
-      if (clients.length === 0) {
-        reject(new Error('No clients available'));
-        return;
-      }
-      
-      // Find the main page client (not /preview/)
-      const mainClient = clients.find(c => !c.url.includes('/preview/'));
-      if (!mainClient) {
-        console.log('[SW] No main client found, using first');
-      }
-      const targetClient = mainClient || clients[0];
-      
-      console.log('[SW] Posting message to client:', targetClient.url, request.method, request.url);
-      targetClient.postMessage({
-        type: 'python-request',
-        requestId,
-        request,
-      });
+    console.log('[SW] Sending to Python via BroadcastChannel:', request.method, request.url);
+    
+    // Send via BroadcastChannel (more reliable than client.postMessage)
+    pythonChannel.postMessage({
+      type: 'python-request',
+      requestId,
+      request,
     });
     
     // Timeout after 30 seconds
