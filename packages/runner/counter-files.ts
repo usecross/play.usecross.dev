@@ -272,8 +272,8 @@ def inertia_response(request: Request, component: str, props: dict):
 
 @app.get("/")
 async def index(request: Request):
-    """Root redirects to counter"""
-    return RedirectResponse("/counter", status_code=303)
+    """Root redirects to counter (relative URL preserves prefix)"""
+    return RedirectResponse("counter", status_code=303)
 
 
 @app.get("/counter")
@@ -305,8 +305,8 @@ async def post_counter(request: Request, action: str = Form(...)):
     elif action == "reset":
         counter_value = 0
     
-    # Inertia POST -> 303 redirect pattern
-    return RedirectResponse("/counter", status_code=303)
+    # Inertia POST -> 303 redirect pattern (relative URL)
+    return RedirectResponse("counter", status_code=303)
 
 
 @app.get("/static/build/{path:path}")
