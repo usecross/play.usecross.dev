@@ -114,12 +114,12 @@ def inertia_response(request: Request, component: str, props: dict):
     </script>
     
     <script type="module">
-        import {{ createElement as h }} from 'react';
+        import {{ createElement as h, useState }} from 'react';
         import {{ createRoot }} from 'react-dom/client';
         import {{ createInertiaApp, router }} from '@inertiajs/react';
         
         function Counter({{ count }}) {{
-            const [processing, setProcessing] = h.useState(false);
+            const [processing, setProcessing] = useState(false);
             
             const handleSubmit = (action) => (e) => {{
                 e.preventDefault();
