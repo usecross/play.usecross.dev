@@ -55,7 +55,8 @@ def inertia_response(request: Request, component: str, props: dict):
             "url": url,
             "version": "1",
         }
-        page_json = html.escape(json.dumps(page_data))
+        # Don't escape - browser handles attribute encoding
+        page_json = json.dumps(page_data)
         
         html_content = f"""<!DOCTYPE html>
 <html lang="en">
