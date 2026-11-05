@@ -145,6 +145,7 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     };
     
     // Send to Python worker via main thread
+    console.log('[SW] Sending to Python:', httpRequest.method, httpRequest.url);
     const response = await sendToPython(httpRequest);
     
     console.log('[SW] Python response:', response.status, response.statusText, 
