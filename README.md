@@ -181,7 +181,7 @@ Phase 0 is development-only. Deployment planned for Phase 1+ via Cloudflare Page
 ```bash
 # When ready (Phase 1+)
 bun run build
-npx wrangler pages deploy dist
+npx wrangler pages deploy apps/shell/dist
 ```
 
 ## Contributing

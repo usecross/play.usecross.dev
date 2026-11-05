@@ -47,6 +47,8 @@ async function initialize() {
     }
     
     // Service Worker is now active and will intercept requests to /preview/
+    // Reload the preview iframe so the first load is intercepted by the active SW
+    previewFrame.contentWindow?.location.reload();
   } catch (error) {
     console.error('[Shell] Failed to initialize:', error);
     updateStatus('Failed to initialize: ' + (error as Error).message);
@@ -60,6 +62,11 @@ reloadBtn.addEventListener('click', () => {
 
 // Listen for preview messages
 window.addEventListener('message', (event) => {
+  // Only process messages from the preview iframe
+  if (event.source !== previewFrame.contentWindow) {
+    return;
+  }
+  
   if (event.data.type === 'preview:ready') {
     updateStatus('Preview ready');
   } else if (event.data.type === 'preview:error') {
