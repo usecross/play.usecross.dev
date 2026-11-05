@@ -120,7 +120,7 @@ def inertia_response(request: Request, component: str, props: dict):
                 e.preventDefault();
                 setProcessing(true);
                 
-                router.post('counter', 
+                router.post('/preview/counter', 
                     {{ action: action }},
                     {{
                         onFinish: () => setProcessing(false),

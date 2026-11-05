@@ -9,14 +9,21 @@ test('debug increment POST', async ({ page }) => {
       url: req.url(),
       method: req.method(),
       postData: req.postData(),
+      headers: req.headers(),
     });
   });
   
   page.on('response', async resp => {
+    const body = resp.url().includes('/preview/counter') && resp.request().method() === 'POST' 
+      ? await resp.text().catch(() => 'error reading body')
+      : null;
+    
     responses.push({
       url: resp.url(),
       status: resp.status(),
+      method: resp.request().method(),
       headers: Object.fromEntries(Object.entries(await resp.allHeaders())),
+      body: body ? body.substring(0, 200) : null,
     });
   });
   
@@ -46,19 +53,24 @@ test('debug increment POST', async ({ page }) => {
   // Wait a bit for the POST request
   await page.waitForTimeout(2000);
   
-  console.log('=== POST requests made ===');
-  requests.filter(r => r.method === 'POST').forEach(r => console.log(JSON.stringify(r, null, 2)));
+  console.log('=== POST requests ===');
+  const postReqs = requests.filter(r => r.method === 'POST');
+  console.log(`Found ${postReqs.length} POST requests`);
+  postReqs.forEach(r => {
+    console.log(r.url, r.postData);
+    console.log('  X-Inertia:', r.headers['x-inertia'] || 'missing');
+    console.log('  X-Inertia-Version:', r.headers['x-inertia-version'] || 'missing');
+  });
   
-  console.log('=== All /counter responses ===');
-  responses.filter(r => r.url.includes('/counter')).forEach(r => console.log(JSON.stringify(r, null, 2)));
+  console.log('=== All responses (after button click) ===');
+  const recentResps = responses.slice(-10);
+  recentResps.forEach(r => {
+    console.log(`${r.method} ${r.url.replace('http://localhost:3000', '')} -> ${r.status} ${r.headers['location'] ? 'Location: ' + r.headers['location'] : ''}`);
+    if (r.body) console.log(`  Body: ${r.body}`);
+  });
   
   const newCount = parseInt(await counterDisplay.textContent() || '0');
   console.log(`New count: ${newCount} (expected ${initialCount + 1})`);
-  
-  // Check if there was a redirect follow-up
-  const getAfterPost = requests.filter(r => r.method === 'GET' && r.url.includes('/counter'));
-  console.log('=== GET requests after POST ===');
-  console.log(JSON.stringify(getAfterPost, null, 2));
   
   expect(true).toBe(true);
 });
