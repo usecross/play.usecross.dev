@@ -103,7 +103,8 @@ export class CookieJarImpl implements CookieJar {
       
       switch (attrName) {
         case 'domain':
-          cookie.domain = attrValue.startsWith('.') ? attrValue.slice(1) : attrValue;
+          // Normalize domain to lowercase
+          cookie.domain = (attrValue.startsWith('.') ? attrValue.slice(1) : attrValue).toLowerCase();
           break;
         case 'path':
           cookie.path = attrValue;
@@ -134,7 +135,7 @@ export class CookieJarImpl implements CookieJar {
     
     // Default domain and path
     if (!cookie.domain) {
-      cookie.domain = url.hostname;
+      cookie.domain = url.hostname.toLowerCase();
     }
     if (!cookie.path) {
       cookie.path = '/';

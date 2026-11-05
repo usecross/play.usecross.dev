@@ -29,10 +29,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'bun run dev',
+    command: 'pnpm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
-    cwd: './apps/shell',
   },
 });

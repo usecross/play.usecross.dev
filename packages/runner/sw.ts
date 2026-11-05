@@ -16,10 +16,12 @@
 
 import type { HttpRequest, HttpResponse } from './types';
 import { CookieJarImpl } from './cookie-jar';
+import { counterFiles } from './counter-files';
 
 declare const self: ServiceWorkerGlobalScope;
 
 let pythonWorker: Worker | null = null;
+let pythonInitialized = false;
 const cookieJar = new CookieJarImpl();
 
 // Initialize Python worker
@@ -30,8 +32,43 @@ function ensureWorker(): Worker {
     });
     
     console.log('[SW] Python worker created');
+    
+    // Initialize with counter files
+    initializePythonWorker(pythonWorker);
   }
   return pythonWorker;
+}
+
+// Initialize Python worker with counter files
+async function initializePythonWorker(worker: Worker): Promise<void> {
+  if (pythonInitialized) return;
+  
+  console.log('[SW] Initializing Python worker with counter files...');
+  
+  return new Promise((resolve, reject) => {
+    const channel = new MessageChannel();
+    
+    channel.port1.onmessage = (event) => {
+      if (event.data.type === 'initialized') {
+        if (event.data.success) {
+          console.log('[SW] Python worker initialized successfully');
+          pythonInitialized = true;
+          resolve();
+        } else {
+          console.error('[SW] Python worker initialization failed');
+          reject(new Error('Python worker initialization failed'));
+        }
+      }
+    };
+    
+    worker.postMessage(
+      {
+        type: 'initialize',
+        files: counterFiles,
+      },
+      [channel.port2]
+    );
+  });
 }
 
 self.addEventListener('install', (event) => {
@@ -41,7 +78,13 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating Service Worker');
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      await self.clients.claim();
+      // Pre-initialize the Python worker
+      ensureWorker();
+    })()
+  );
 });
 
 self.addEventListener('fetch', (event) => {
@@ -68,6 +111,12 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     const appUrl = url.origin + appPath + url.search + url.hash;
     
     console.log('[SW] Handling request:', request.method, appPath);
+    
+    // Ensure worker is initialized before processing request
+    const worker = ensureWorker();
+    if (!pythonInitialized) {
+      await initializePythonWorker(worker);
+    }
     
     // Read request body if present
     let body: Uint8Array | undefined;
@@ -96,8 +145,7 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
       body,
     };
     
-    // Send to Python worker
-    const worker = ensureWorker();
+    // Send to Python worker (already ensured above)
     const response = await sendHttpRequest(worker, httpRequest);
     
     // Extract Set-Cookie headers and update cookie jar

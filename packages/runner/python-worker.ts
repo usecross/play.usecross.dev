@@ -44,6 +44,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
     'fastapi',
     'starlette',
     'pydantic',
+    'python-multipart',  // Required for FastAPI form parsing
   ]);
   
   // Install CrossInertia (when available on PyPI, or from GitHub)
@@ -77,6 +78,9 @@ def inertia_dependency():
 
 fastapi_module.inertia_dependency = inertia_dependency
 fastapi_module.InertiaResponse = InertiaResponse
+
+# Register in sys.modules
+sys.modules['cross_inertia.fastapi'] = fastapi_module
     `);
   }
 
@@ -84,6 +88,13 @@ fastapi_module.InertiaResponse = InertiaResponse
   console.log('[Python Worker] Loading ASGI bridge...');
   const asgiBridgeCode = await fetch(new URL('./asgi-bridge.py', import.meta.url)).then(r => r.text());
   pyodide.runPython(asgiBridgeCode);
+  
+  // Register asgi_bridge in sys.modules so it can be imported
+  pyodide.runPython(`
+import sys
+import asgi_bridge
+sys.modules['asgi_bridge'] = asgi_bridge
+  `);
 
   // Load user files into virtual filesystem if provided
   if (files) {

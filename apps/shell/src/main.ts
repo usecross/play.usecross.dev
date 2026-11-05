@@ -23,8 +23,11 @@ async function initialize() {
       throw new Error('Service Workers are not supported in this browser');
     }
 
-    const registration = await navigator.serviceWorker.register('/sw.js', {
+    // In dev mode, use the TypeScript source; in production, use the built sw.js
+    const swUrl = import.meta.env.DEV ? '/sw.ts' : '/sw.js';
+    const registration = await navigator.serviceWorker.register(swUrl, {
       scope: '/',
+      type: 'module',
     });
 
     // Wait for the service worker to be active

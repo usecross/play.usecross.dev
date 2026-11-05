@@ -7,9 +7,9 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --cwd apps/shell dev",
-    "build": "bun run --cwd apps/shell build",
-    "preview": "bun run --cwd apps/shell preview",
+    "dev": "pnpm --filter @play.usecross.dev/shell dev",
+    "build": "pnpm --filter @play.usecross.dev/shell build",
+    "preview": "pnpm --filter @play.usecross.dev/shell preview",
     "test": "npx playwright test",
     "test:install": "npx playwright install --with-deps chromium"
   },
