@@ -84,6 +84,7 @@ play.usecross.dev/
 ├── apps/
 │   └── shell/              # Minimal playground shell (Phase 0)
 │       ├── index.html      # Main UI with preview iframe
+│       ├── sw.ts           # SW entry (re-exports runner; Vite emits /sw.js)
 │       └── src/main.ts     # Service Worker registration
 ├── packages/
 │   ├── runner/             # 🔥 Core runtime
@@ -101,7 +102,7 @@ play.usecross.dev/
 │       ├── templates/app.html # Inertia root template
 │       ├── frontend/       # React components (source)
 │       └── static/build/.vite/manifest.json # Synthetic manifest
-├── wrangler.toml           # Cloudflare Pages placeholder
+├── wrangler.jsonc          # Cloudflare Workers + static assets
 └── docs/
     └── architecture.md     # Technical architecture docs
 ```
@@ -156,8 +157,11 @@ bun install
 # Run shell dev server
 bun run dev
 
-# Build for production (Phase 1+)
+# Build the shell for production (output: apps/shell/dist)
 bun run build
+
+# Build and deploy to Cloudflare Workers
+bun run deploy
 ```
 
 ### Debugging
@@ -176,13 +180,22 @@ Errors in Python execution are caught and returned as JSON with traceback.
 
 ## Deployment
 
-Phase 0 is development-only. Deployment planned for Phase 1+ via Cloudflare Pages.
+The playground is a static Vite app on [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/). There is no Pages project and no Worker script: Vite bundles `apps/shell/sw.ts` (re-export of `@play.usecross.dev/runner/sw`) to `/sw.js`, which intercepts `/preview/` in the browser with scope `/`.
 
 ```bash
-# When ready (Phase 1+)
-bun run build
-npx wrangler pages deploy apps/shell/dist
+bun run deploy
 ```
+
+That runs `bun run build` (shell output in `apps/shell/dist`) then `wrangler deploy`. Config lives in `wrangler.jsonc`:
+
+- Worker name: `play-usecross-dev`
+- Assets directory: `apps/shell/dist`
+- Custom domain: `play.usecross.dev` (`routes` + `custom_domain: true`, which creates DNS in the `usecross.dev` zone)
+- `workers.dev` URL kept alongside the custom domain
+
+Requires Cloudflare credentials (`CLOUDFLARE_API_TOKEN` or `bunx wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Check the active account with `bunx wrangler whoami`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+
+Run only one production build/deploy at a time, across all checkouts. Do not rebuild `apps/shell/dist` during an upload, and let an earlier deploy finish before publishing a newer revision. The deploy script does not enforce serialization; future CI must do so. See the [architecture deployment guide](./docs/architecture.md#deployment) for preflight and browser verification steps.
 
 ## Contributing
 

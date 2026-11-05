@@ -10,13 +10,15 @@
     "dev": "bun --filter @play.usecross.dev/shell dev",
     "build": "bun --filter @play.usecross.dev/shell build",
     "preview": "bun --filter @play.usecross.dev/shell preview",
+    "deploy": "bun run build && wrangler deploy",
     "test": "npx playwright test",
     "test:install": "npx playwright install --with-deps chromium"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
     "@types/bun": "latest",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "wrangler": "^4.50.0"
   },
   "engines": {
     "bun": ">=1.0.0"
