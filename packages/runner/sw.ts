@@ -57,13 +57,24 @@ async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
     // Send to all clients (the main thread will forward to Python worker)
     self.clients.matchAll().then(clients => {
       console.log('[SW] sendToPython: found', clients.length, 'clients');
+      clients.forEach((client, i) => {
+        console.log(`[SW]   client[${i}]:`, client.url, 'type:', client.type);
+      });
+      
       if (clients.length === 0) {
         reject(new Error('No clients available'));
         return;
       }
       
-      console.log('[SW] Posting message to client:', request.method, request.url);
-      clients[0].postMessage({
+      // Find the main page client (not /preview/)
+      const mainClient = clients.find(c => !c.url.includes('/preview/'));
+      if (!mainClient) {
+        console.log('[SW] No main client found, using first');
+      }
+      const targetClient = mainClient || clients[0];
+      
+      console.log('[SW] Posting message to client:', targetClient.url, request.method, request.url);
+      targetClient.postMessage({
         type: 'python-request',
         requestId,
         request,
