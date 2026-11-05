@@ -44,7 +44,7 @@ jobs:
         run: bun test:install
 
       - name: Run Playwright tests
-        run: bun test
+        run: bun run test
         env:
           # Increase timeouts for CI environment (slower than local)
           PLAYWRIGHT_TIMEOUT: 60000
