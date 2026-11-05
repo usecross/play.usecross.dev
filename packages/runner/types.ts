@@ -18,6 +18,8 @@ export interface VirtualFileSystem {
 export interface HttpRequest {
   method: string;
   url: string;
+  /** ASGI mount prefix; url retains the full browser-visible path. */
+  rootPath?: string;
   headers: Record<string, string>;
   body?: Uint8Array;
 }

@@ -1,0 +1,10 @@
+{
+  "pyodideVersion": "0.27.8",
+  "crossInertia": {
+    "version": "0.22.1",
+    "revision": "391eefd87055d2f9813c46fd58d0e2299460f19e",
+    "archiveSha256": "9faedfe2e5dd36c57d7d8521e35ba091dcb0f96e2fc2d7dcaa17f3aa7ac3530b",
+    "pullRequest": "https://github.com/usecross/cross-inertia/pull/146",
+    "wheelPath": "/wheels/391eefd87055d2f9813c46fd58d0e2299460f19e/cross_inertia-0.22.1-py3-none-any.whl"
+  }
+}

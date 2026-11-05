@@ -1,224 +1,159 @@
 # CrossInertia Playground
 
-**Phase 0** — Proof of concept for running CrossInertia applications entirely in the browser using Service Workers and Pyodide.
+An in-browser playground for [CrossInertia](https://github.com/usecross/cross-inertia): Python runs in Pyodide, with a browser Service Worker routing preview requests to a FastAPI ASGI app. There is no backend Python server.
 
-🌐 **Site**: [play.usecross.dev](https://play.usecross.dev)  
-📦 **Repo**: [github.com/usecross/play.usecross.dev](https://github.com/usecross/play.usecross.dev)
+- **Site:** [play.usecross.dev](https://play.usecross.dev)
+- **Repository:** [usecross/play.usecross.dev](https://github.com/usecross/play.usecross.dev)
 
-## What is this?
+## Current milestone: real CrossInertia
 
-An in-browser playground for experimenting with [CrossInertia](https://github.com/usecross/cross-inertia) — the Python implementation of the Inertia.js protocol for FastAPI, Django, and Litestar.
+The counter uses the actual CrossInertia renderer for HTML, page JSON, partial reloads, version conflicts, and manifest-generated JavaScript/CSS tags. The handwritten protocol helper and fake-library fallback have been removed.
 
-**Key innovation**: Python applications run entirely in the browser via Pyodide (Python in WebAssembly), with a Service Worker intercepting HTTP requests and routing them to a Python ASGI/WSGI application. No backend server required.
+> **Unreleased upstream dependency:** this branch requires [cross-inertia PR #146](https://github.com/usecross/cross-inertia/pull/146), pinned to commit `391eefd87055d2f9813c46fd58d0e2299460f19e`. Published CrossInertia 0.22.1 attempts to create a thread while resolving props inside an async route, which fails in Pyodide. Development/build commands build a wheel from that exact upstream source, with no local source patches. This is **not** the PyPI 0.22.1 wheel. Normal production deployment is blocked until the dependency is released and the pin is updated. The live site is still the previously deployed bridge demo.
 
-## Phase 0 Status
+See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraints, and the next steps.
 
-✅ **Complete:**
-- Service Worker + Pyodide ASGI bridge architecture
-- FastAPI + CrossInertia counter example
-- Full Inertia form POST → 303 redirect → render cycle
-- Virtual cookie jar for session management
-- Synthetic Vite manifest for CrossInertia asset resolution
+### Working
 
-🚧 **Phase 0 Limitations:**
-- Counter uses in-memory state (resets on reload)
-- React/Inertia loaded from CDN (inline components)
-- No Monaco editor yet (fixed example only)
-- esbuild-wasm bundler is stubbed
+- Real FastAPI → CrossInertia → HTML/JSON responses inside Pyodide
+- Inertia React client: counter POST → 303 → GET → render
+- ASGI `root_path`: redirects and Inertia URLs stay under `/preview/`
+- Real Jinja template and Vite-shaped manifest resolving VFS JavaScript/CSS
+- Visible initialization failures; no dependency stubs
+- Preview reload (retains the current Python worker's in-memory count)
 
-📋 **Next Phases:**
-1. **Phase 1**: Monaco editor, dynamic bundling, IDBFS persistence
-2. **Phase 2**: Django support, SQLite ORM, migrations
-3. **Phase 3**: WebSockets, SSE, broadcasting, Litestar
+### Not implemented yet
 
-## Quick Start
+- SQLite / IDBFS persistence: a **full page reload resets the count**
+- Monaco and editable projects
+- Dynamic esbuild-wasm bundling (the fixed ESM starter imports React/Inertia from pinned CDN URLs)
+- Django/WSGI, SSR, WebSockets/SSE, or cross-origin runner isolation
+- Async prop callbacks that need an event loop/thread bridge; this milestone uses plain props
+
+## Quick start
 
 ### Prerequisites
-- [Bun](https://bun.sh/) >= 1.0.0
 
-### Running Locally
+- [Bun](https://bun.sh/) **1.4+** (the checked-in lockfile uses version 2)
+- [uv](https://docs.astral.sh/uv/) and `tar` on `PATH` to build the pinned upstream wheel
+- Internet access to GitHub, PyPI, jsDelivr, and esm.sh
+- For Wrangler / deployment: **Node.js 22+** on `PATH`
 
 ```bash
-# Install dependencies
-bun install
-
-# Start development server
+bun install --frozen-lockfile
 bun run dev
 ```
 
-Open http://localhost:3000 to see the playground shell. The preview iframe at `/preview/` is intercepted by the Service Worker and routed to the Pyodide-powered Python application.
+Open http://localhost:3000. The preview stays blank until the Service Worker controls the page and the real Python package and starter are initialized.
 
-### Running Tests
+`bun run dev` and `bun run build` first run `bun run prepare:runtime`. It downloads the immutable upstream archive, checks its SHA256 against `packages/starters/runtime.json`, and builds a pure-Python wheel with `uv`. Generated wheels live in ignored `apps/shell/public/wheels/`; a cached wheel is reused only when its source metadata and file hash match. No wheel binary is committed.
 
-Phase 0 includes lightweight smoke tests to catch build breaks:
+### Tests
 
 ```bash
-# First time: Install Playwright browsers
-npm run test:install
+bun run typecheck
+bun run test:python       # Python 3.12; uv installs it if needed
+bun run test:install      # First time: install Playwright Chromium
+bun run test             # Vite development server
+bun run test:production  # Built assets on Wrangler's local runtime
+```
 
-# Run smoke tests
-npm test
+To use an installed Chrome locally instead of Playwright's bundled Chromium:
+
+```bash
+PLAYWRIGHT_CHANNEL=chrome bun run test
+PLAYWRIGHT_CHANNEL=chrome bun run test:production
 ```
 
 Tests verify:
-- Shell loads without Vite errors
-- Service Worker registers successfully
-- Preview iframe is present
-- No critical console errors
 
-### Try the Counter Example
+- Real CrossInertia rendering with thread creation, Vite probes, and port scans forbidden
+- Manifest-derived asset version and JS/CSS delivery through the Python VFS
+- Counter increment, decrement (including negative counts), reset, and preview reload
+- Mount-prefix preservation, partial reload filtering, version conflicts, and invalid input
+- A failed wheel download produces a visible error and never a fake successful preview
 
-The counter example demonstrates a complete Inertia.js flow:
-1. Click **+** button → Inertia form POST to `/counter`
-2. Service Worker intercepts → Routes to Pyodide
-3. FastAPI handler increments counter in Python
-4. Returns 303 redirect → Inertia follows
-5. Renders updated counter value
+CI runs the native regression test and both browser configurations.
 
-All of this happens in-browser with no backend server.
+## Project structure
 
-## Project Structure
-
-```
-play.usecross.dev/
-├── apps/
-│   └── shell/              # Minimal playground shell (Phase 0)
-│       ├── index.html      # Main UI with preview iframe
-│       ├── sw.ts           # SW entry (re-exports runner; Vite emits /sw.js)
-│       └── src/main.ts     # Service Worker registration
-├── packages/
-│   ├── runner/             # 🔥 Core runtime
-│   │   ├── sw.ts           # Service Worker (HTTP interception)
-│   │   ├── python-worker.ts # Pyodide worker
-│   │   ├── asgi-bridge.py  # Python ASGI adapter
-│   │   ├── wsgi-bridge.py  # Django WSGI adapter (stub)
-│   │   ├── cookie-jar.ts   # Virtual cookie management
-│   │   └── types.ts        # PythonFrameworkRuntime interface
-│   ├── bundler/            # esbuild-wasm (Phase 1+, stub)
-│   └── starters/           # Dependency notes
-├── examples/
-│   └── counter/            # 🎯 Phase 0 proof
-│       ├── app.py          # FastAPI + CrossInertia routes
-│       ├── templates/app.html # Inertia root template
-│       ├── frontend/       # React components (source)
-│       └── static/build/.vite/manifest.json # Synthetic manifest
-├── wrangler.jsonc          # Cloudflare Workers + static assets
-└── docs/
-    └── architecture.md     # Technical architecture docs
+```text
+apps/shell/                      Vite shell, SW entry, preview host
+packages/runner/
+  sw.ts                          Browser fetch interception and virtual cookies
+  python-worker.ts               Pyodide installation, VFS, serialized requests
+  asgi-bridge.py                  HTTP → ASGI adapter
+  browser_inertia.py              Runtime-mode shim, not a protocol implementation
+  counter-files.ts                Imports actual example files as raw VFS contents
+packages/starters/
+  runtime.json                   Exact upstream revision / archive hash / Pyodide version
+  requirements.txt               Direct Python dependency pins
+packages/bundler/                Future in-browser bundler (stub)
+examples/counter/
+  app.py                         Real CrossInertia + FastAPI routes
+  templates/app.html             inertia_head() / inertia_body()
+  frontend/app.js                 Fixed browser-native ESM starter
+  frontend/app.css                Starter styles
+  static/build/.vite/manifest.json
+scripts/                         Candidate wheel preparation, tests, deployment guard
 ```
 
-## How It Works
+The example files are the source of truth—there is no second copy embedded inside TypeScript. The ESM/CSS sources are mapped to build paths inside Pyodide's VFS until dynamic bundling is implemented.
 
-See [`docs/architecture.md`](./docs/architecture.md) for full details. Quick overview:
+## Request flow
 
-### HTTP Request Flow
-
-```
-Browser request to /preview/counter
-        ↓
-Service Worker intercepts (sw.ts)
-        ↓
-MessageChannel → Python Worker (python-worker.ts)
-        ↓
-Pyodide loads & runs ASGI bridge (asgi-bridge.py)
-        ↓
-FastAPI app executes (examples/counter/app.py)
-        ↓
-Response flows back through SW → Browser
+```text
+Preview request: /preview/counter
+  → Service Worker
+  → BroadcastChannel to shell
+  → MessageChannel to Python worker
+  → ASGI scope: path=/preview/counter, root_path=/preview
+  → FastAPI route /counter
+  → CrossInertia's real renderer / manifest / Jinja template
+  → Response back through the bridge to the browser
 ```
 
-### Inertia Integration
-
-CrossInertia expects a Vite dev server or manifest in production. Since we can't run Vite inside Pyodide, Phase 0 uses:
-- **Synthetic manifest**: `static/build/.vite/manifest.json` in Pyodide VFS
-- **Inline components**: React/Inertia in `app.html` template
-- **Future**: esbuild-wasm will bundle components; SW serves from `/static/build/`
-
-### Cookie Management
-
-Service Workers can't read the `Cookie` header from intercepted requests. Solution:
-- **cookie-jar.ts**: Virtual cookie store in the SW
-- Parses `Set-Cookie` from Python responses
-- Injects `Cookie` header into subsequent requests
-
-## Development
-
-### Workspace Structure
-
-Bun workspaces for monorepo:
-- `apps/shell` - Vite-powered playground UI
-- `packages/runner` - Service Worker + Pyodide runtime
-- `packages/bundler` - esbuild-wasm integration (Phase 1+)
-
-```bash
-# Install all workspaces
-bun install
-
-# Run shell dev server
-bun run dev
-
-# Build the shell for production (output: apps/shell/dist)
-bun run build
-
-# Build and deploy to Cloudflare Workers
-bun run deploy
-```
-
-### Debugging
-
-**Service Worker:**
-```
-Chrome/Edge: DevTools → Application → Service Workers
-Firefox: about:debugging → This Firefox → Service Workers
-```
-
-**Python Worker:**
-Check console logs prefixed with `[Python Worker]`.
-
-**Pyodide Errors:**
-Errors in Python execution are caught and returned as JSON with traceback.
+`BrowserInertiaResponse` subclasses the published response class only to force production mode without an HTTP probe, avoid automatic socket-based port selection, and disable SSR. Rendering is inherited unchanged. The starter calls the library's dependency from an async route to avoid FastAPI's sync-dependency thread pool. See [architecture](./docs/architecture.md) and [milestone details](./docs/real-cross-inertia.md).
 
 ## Deployment
 
-The playground is a static Vite app on [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/). There is no Pages project and no Worker script: Vite bundles `apps/shell/sw.ts` (re-export of `@play.usecross.dev/runner/sw`) to `/sw.js`, which intercepts `/preview/` in the browser with scope `/`.
+Hosting uses Cloudflare **Workers Static Assets**, not Pages:
+
+- Config: `wrangler.jsonc`
+- Worker: `play-usecross-dev`
+- Assets: `apps/shell/dist`
+- Custom domain: `play.usecross.dev`
+- Fallback: `play-usecross-dev.patrick-arminio.workers.dev`
 
 ```bash
-bun run deploy
+bunx wrangler whoami
+bun run build
+bunx wrangler deploy --dry-run
 ```
 
-That runs `bun run build` (shell output in `apps/shell/dist`) then `wrangler deploy`. Config lives in `wrangler.jsonc`:
+**`bun run deploy` is intentionally blocked while this branch uses an unreleased upstream candidate.** Merge/release PR #146, switch to its published wheel, and remove the temporary candidate build/guard before normal deployment. For a separately approved candidate deployment only, the explicit override is `CROSS_INERTIA_ALLOW_UNRELEASED=1 bun run deploy`.
 
-- Worker name: `play-usecross-dev`
-- Assets directory: `apps/shell/dist`
-- Custom domain: `play.usecross.dev` (`routes` + `custom_domain: true`, which creates DNS in the `usecross.dev` zone)
-- `workers.dev` URL kept alongside the custom domain
+Wrangler needs credentials (`CLOUDFLARE_API_TOKEN` or `bunx wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
 
-Requires Cloudflare credentials (`CLOUDFLARE_API_TOKEN` or `bunx wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Check the active account with `bunx wrangler whoami`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+Run one production build/deploy at a time across all checkouts. Do not rebuild `apps/shell/dist` during an upload or allow an older deployment to publish after a newer one. Future deployment CI must enforce serialization.
 
-Run only one production build/deploy at a time, across all checkouts. Do not rebuild `apps/shell/dist` during an upload, and let an earlier deploy finish before publishing a newer revision. The deploy script does not enforce serialization; future CI must do so. See the [architecture deployment guide](./docs/architecture.md#deployment) for preflight and browser verification steps.
+## Scope and roadmap
 
-## Contributing
+1. Release the proven upstream thread-resolution fix and replace the candidate pin.
+2. Add an explicit upstream runtime-mode option, then remove the browser mode subclass.
+3. Add SQLite + IDBFS with a persistence-after-full-reload acceptance test.
+4. Add Monaco and dynamic frontend bundling.
+5. Expand framework support and harden runner isolation.
 
-Phase 0 is a scaffold. Contributions welcome for:
-- Improving ASGI bridge reliability
-- Adding proper CrossInertia package detection
-- SQLite + IDBFS persistence
-- Monaco editor integration (Phase 1)
+Cross-Auth playgrounds are outside this repository's current scope.
 
-## Research & Prior Art
+## References
 
-This project builds on:
-- [Simon Willison's Pyodide ASGI browser experiment](https://simonwillison.net/2024/May/21/pyodide-asgi-browser/) — Service Worker + FastAPI pattern
-- [Django Playground](https://github.com/django-playground) — Django in Pyodide reference
-- Inertia.js v3.11+ Live Props — Future real-time integration target
+- [CrossInertia](https://github.com/usecross/cross-inertia)
+- [Inertia.js](https://inertiajs.com/)
+- [Pyodide](https://pyodide.org/)
+- [Simon Willison's Pyodide/ASGI experiment](https://simonwillison.net/2024/May/21/pyodide-asgi-browser/)
 
 ## License
 
 MIT
-
-## Links
-
-- [CrossInertia](https://github.com/usecross/cross-inertia) - Python Inertia.js implementation
-- [Inertia.js](https://inertiajs.com/) - The Inertia protocol
-- [Pyodide](https://pyodide.org/) - Python in the browser
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework

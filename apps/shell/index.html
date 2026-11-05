@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:,">
   <title>CrossInertia Playground</title>
   <style>
     * {
@@ -143,10 +144,10 @@
     
     <div class="preview-panel">
       <div class="preview-toolbar">
-        <button id="reload-btn">Reload Preview</button>
-        <span class="status" id="status">Ready</span>
+        <button id="reload-btn" disabled>Reload Preview</button>
+        <span class="status" id="status" role="status">Initializing...</span>
       </div>
-      <iframe id="preview" src="/preview/"></iframe>
+      <iframe id="preview" src="about:blank" title="Counter preview"></iframe>
     </div>
   </main>
   
