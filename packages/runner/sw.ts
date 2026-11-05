@@ -88,15 +88,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   
-  console.log('[SW] Fetch event:', event.request.method, url.pathname);
-  
   // Only intercept /preview/ paths
   if (!url.pathname.startsWith('/preview/')) {
-    console.log('[SW] Skipping (not /preview/*)');
     return;
   }
 
-  console.log('[SW] Intercepting:', event.request.method, url.pathname);
   event.respondWith(handlePreviewRequest(event.request));
 });
 
@@ -112,7 +108,6 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     const appPath = url.pathname.replace(/^\/preview/, '') || '/';
     const appUrl = url.origin + appPath + url.search + url.hash;
     
-    console.log('[SW] Handling request:', request.method, appPath);
     
     // Read request body if present
     let body: Uint8Array | undefined;
@@ -144,10 +139,6 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     // Send to Python worker via main thread
     console.log('[SW] Sending to Python:', httpRequest.method, httpRequest.url);
     const response = await sendToPython(httpRequest);
-    
-    console.log('[SW] Python response:', response.status, response.statusText, 
-                'Location:', response.headers['location'] || 'none',
-                'X-Inertia:', response.headers['x-inertia'] || 'none');
     
     // Extract Set-Cookie headers and update cookie jar
     const setCookieHeaders: string[] = [];

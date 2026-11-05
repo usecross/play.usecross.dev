@@ -151,8 +151,6 @@ json.dumps(response)
 
   const response = JSON.parse(responseData as string);
 
-  console.log('[Python Worker] Response from Python:', response.status, response.statusText);
-
   // Convert body back to Uint8Array if present
   let body: Uint8Array | undefined;
   if (response.body) {
