@@ -61,7 +61,6 @@ The previously always-passing debug specs were replaced by assertions on these b
 
 ## Deliberately not done
 
-- Nothing from this milestone has been deployed to production yet.
 - The counter is still a Python global. Preview-only reload retains it; full shell reload creates a new worker and resets it.
 - No SQLite, IDBFS, Monaco, dynamic TSX bundler, Django, SSR, or origin-isolation work is included.
 

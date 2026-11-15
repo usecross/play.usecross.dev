@@ -18,7 +18,8 @@ export default defineConfig({
   timeout: 180_000, // Includes Python/wheel downloads and the actual browser HTTP cycle
   
   use: {
-    baseURL: 'http://localhost:3000',
+    // PLAYWRIGHT_BASE_URL tests an already running site, such as production.
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
   },
 
@@ -29,7 +30,7 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
+  webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : {
     command: 'bun run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,

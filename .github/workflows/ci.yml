@@ -6,10 +6,11 @@ on:
       - main
   pull_request:
 
-# Cancel in-progress runs for the same workflow on the same branch/PR
+# Cancel superseded pull request runs, but never interrupt a run on main,
+# which may be deploying.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -70,3 +71,67 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+
+  deploy:
+    name: Deploy to play.usecross.dev
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://play.usecross.dev
+    # One production deploy at a time, across commits.
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Skip unless this commit is still the tip of main
+        # Tests for an older commit can finish after a newer one has deployed.
+        id: tip
+        run: |
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Skipping deploy: main has moved past $GITHUB_SHA"
+          fi
+
+      - name: Setup Bun
+        if: steps.tip.outputs.deploy == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        if: steps.tip.outputs.deploy == 'true'
+        run: bun install --frozen-lockfile
+
+      - name: Build and deploy
+        if: steps.tip.outputs.deploy == 'true'
+        run: bun run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Cache Playwright browsers
+        if: steps.tip.outputs.deploy == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: steps.tip.outputs.deploy == 'true'
+        run: bun test:install
+
+      - name: Test the live site
+        if: steps.tip.outputs.deploy == 'true'
+        run: bun run test
+        env:
+          PLAYWRIGHT_BASE_URL: https://play.usecross.dev

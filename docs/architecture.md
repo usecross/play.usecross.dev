@@ -542,13 +542,10 @@ print(os.listdir('/examples/counter'))
 
 ### Cloudflare Workers Static Assets
 
-From the repository root:
-
-```bash
-bun install --frozen-lockfile
-bunx wrangler whoami # Or bunx wrangler login if not authenticated
-bun run deploy
-```
+Pushes to `main` deploy automatically: the `deploy` job in
+`.github/workflows/ci.yml` runs after the tests pass, then tests the live site.
+See the [README](../README.md#deployment) for the API token it needs and for
+manual deploys.
 
 `bun run deploy` builds the shell, then publishes its static assets using
 `wrangler.jsonc`. There is no Cloudflare Pages project or server-side Worker
@@ -578,16 +575,12 @@ and PyPI at runtime; they are not part of the static asset upload.
 Deploying can create that hostname's DNS record in the `usecross.dev` zone.
 Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
 
-Run only one production build/deploy at a time, and do not rebuild
-`apps/shell/dist` while Wrangler is uploading it. Wait for any earlier deploy
-to finish before publishing a newer revision. These are manual constraints,
-not enforced by the deploy script; future CI must serialize production
-deployments across revisions.
-
-Before publishing, run `bun run build` and `bunx wrangler deploy --dry-run`.
-After publishing, verify the shell and `/sw.js` over HTTPS, then open a fresh
-browser session and check that Python initializes and the counter increments
-and decrements. An HTTP-only check of the shell does not exercise the ASGI bridge.
+The deploy job serializes production deploys with a `production-deploy`
+concurrency group and skips any commit that is no longer the tip of `main`, so
+an older revision never publishes after a newer one. After publishing, it runs
+the full browser suite against https://play.usecross.dev
+(`PLAYWRIGHT_BASE_URL`). An HTTP-only check of the shell would not exercise the
+ASGI bridge.
 
 ## Next Steps
 

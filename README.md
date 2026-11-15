@@ -9,7 +9,7 @@ An in-browser playground for [CrossInertia](https://github.com/usecross/cross-in
 
 The counter uses the actual CrossInertia renderer for HTML, page JSON, partial reloads, version conflicts, and manifest-generated JavaScript/CSS tags. The handwritten protocol helper and fake-library fallback have been removed.
 
-> **Requires CrossInertia 0.22.2+.** Earlier releases start a thread while resolving props inside an async route, which fails in Pyodide. 0.22.2 ([cross-inertia #146](https://github.com/usecross/cross-inertia/pull/146)) resolves plain and sync props without one. The live site is still the previously deployed bridge demo.
+> **Requires CrossInertia 0.22.2+.** Earlier releases start a thread while resolving props inside an async route, which fails in Pyodide. 0.22.2 ([cross-inertia #146](https://github.com/usecross/cross-inertia/pull/146)) resolves plain and sync props without one.
 
 See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraints, and the next steps.
 
@@ -123,16 +123,17 @@ Hosting uses Cloudflare **Workers Static Assets**, not Pages:
 - Custom domain: `play.usecross.dev`
 - Fallback: `play-usecross-dev.patrick-arminio.workers.dev`
 
+Every push to `main` deploys automatically. The CI workflow's `deploy` job runs after the tests pass, publishes with `bun run deploy`, then runs the browser suite against https://play.usecross.dev. Deploys run one at a time, and a commit that is no longer the tip of `main` is skipped, so an older revision never replaces a newer one.
+
+The job needs a `CLOUDFLARE_API_TOKEN` repository secret: a Cloudflare API token made from the **Edit Cloudflare Workers** template, scoped to account `8a22aaadda6af656a4fe3835b90450dd` and the `usecross.dev` zone. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+
+To deploy by hand, which you should rarely need, make sure no CI deploy is running, then:
+
 ```bash
 bunx wrangler whoami
-bun run build
-bunx wrangler deploy --dry-run
 bun run deploy
+PLAYWRIGHT_BASE_URL=https://play.usecross.dev bun run test
 ```
-
-Wrangler needs credentials (`CLOUDFLARE_API_TOKEN` or `bunx wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
-
-Run one production build/deploy at a time across all checkouts. Do not rebuild `apps/shell/dist` during an upload or allow an older deployment to publish after a newer one. Future deployment CI must enforce serialization.
 
 ## Scope and roadmap
 
