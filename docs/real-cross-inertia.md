@@ -63,7 +63,7 @@ The previously always-passing debug specs were replaced by assertions on these b
 ## Deliberately not done
 
 - The counter was a Python global, reset by a full reload. SQLite in IndexedDB replaced it in the next milestone; see [State Persistence](./architecture.md#state-persistence).
-- No Monaco, dynamic TSX bundler, Django, SSR, or origin-isolation work is included.
+- No editor, dynamic TSX bundler, Django, SSR, or origin-isolation work is included.
 
 ## Next checkpoints
 

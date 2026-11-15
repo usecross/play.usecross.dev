@@ -46,9 +46,67 @@
     .editor-panel {
       width: 50%;
       border-right: 1px solid #ddd;
-      background: #f5f5f5;
-      padding: 1rem;
-      overflow: auto;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .editor {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .file-tabs {
+      display: flex;
+      flex-shrink: 0;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      background: #f0f0f0;
+      border-bottom: 1px solid #ddd;
+    }
+
+    .file-tabs button {
+      padding: 0.6rem 0.65rem;
+      white-space: nowrap;
+      flex-shrink: 0;
+      border: none;
+      border-bottom: 2px solid transparent;
+      background: none;
+      font: 0.75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #555;
+      cursor: pointer;
+    }
+
+    .file-tabs button:hover {
+      color: #1a1a1a;
+      background: #e6e6e6;
+    }
+
+    .file-tabs button[aria-selected="true"] {
+      color: #1a1a1a;
+      background: #fff;
+      border-bottom-color: #007bff;
+    }
+
+    .code {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .code .cm-editor {
+      height: 100%;
+      font-size: 0.8125rem;
+    }
+
+    .editor-note {
+      padding: 0.5rem 1rem;
+      border-top: 1px solid #ddd;
+      background: #f7f7f7;
+      font-size: 0.8125rem;
+      color: #666;
     }
     
     .preview-panel {
@@ -97,29 +155,6 @@
       background: white;
     }
     
-    .code-info {
-      background: white;
-      padding: 1rem;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .code-info h2 {
-      font-size: 1.25rem;
-      margin-bottom: 0.5rem;
-    }
-    
-    .code-info p {
-      color: #666;
-      line-height: 1.6;
-      margin-bottom: 0.5rem;
-    }
-    
-    .code-info ul {
-      margin-left: 1.5rem;
-      color: #666;
-      line-height: 1.8;
-    }
   </style>
 </head>
 <body>
@@ -130,21 +165,13 @@
   
   <main>
     <div class="editor-panel">
-      <div class="code-info">
-        <h2>Counter example</h2>
-        <p>
-          The preview runs a FastAPI app with the real CrossInertia library inside
-          your browser. There is no Python server.
-        </p>
-        <ul>
-          <li>A Service Worker sends the preview's requests to Python running in Pyodide.</li>
-          <li>Each click is a real Inertia round trip: POST, 303 redirect, then a JSON page update.</li>
-          <li>The count is saved in SQLite, stored in your browser's IndexedDB, so it survives a reload.</li>
-        </ul>
-        <p style="margin-top: 1rem;">
-          An editor for the example's files is coming next.
-        </p>
+      <div id="editor" class="editor">
+        <p class="editor-note">Loading the starter's files...</p>
       </div>
+      <p class="editor-note">
+        The FastAPI and CrossInertia app on the right runs in your browser. Its count is saved in
+        SQLite in your browser's storage. These files are read-only for now; editing comes next.
+      </p>
     </div>
     
     <div class="preview-panel">

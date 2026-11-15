@@ -70,6 +70,28 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
   expect(errors).toEqual([]);
 });
 
+test('the editor shows the starter files that run in Python, read-only', async ({ page }) => {
+  await page.goto('/');
+  const tabs = page.getByRole('tab');
+  await expect(tabs).toHaveText(['app.py', 'templates/app.html', 'frontend/app.js', 'frontend/app.css', 'pyproject.toml']);
+  await expect(page.getByRole('tab', { selected: true })).toHaveText('app.py');
+  const code = page.getByRole('tabpanel').locator('.cm-content');
+  await expect(code).toContainText('def read_count()');
+
+  await code.click();
+  await page.keyboard.type('# edited');
+  await expect(code).not.toContainText('# edited');
+
+  // Arrow keys move between tabs; the panel follows the selection.
+  await page.getByRole('tab', { name: 'app.py' }).focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('tab', { selected: true })).toHaveText('pyproject.toml');
+  await expect(page.getByRole('tab', { name: 'pyproject.toml' })).toBeFocused();
+  await expect(code).toContainText(`"cross-inertia==${crossInertiaVersion}"`);
+  await page.getByRole('tab', { name: 'templates/app.html' }).click();
+  await expect(code).toContainText('{{ inertia_body() }}');
+});
+
 test('counter mutations stay inside the ASGI mount and persist in IndexedDB', async ({ page, context, browser }) => {
   await ready(page);
   const frame = page.frameLocator('#preview');

@@ -430,7 +430,7 @@ setTimeout(() => {
 
 ### What Doesn't Work Yet
 ❌ Real asset bundling (CDN/inline only)  
-❌ Monaco editor (fixed example)  
+❌ Editing files (the CodeMirror view is read-only)  
 ❌ WSGI/Django  
 ❌ WebSocket/SSE  
 ❌ File uploads  
@@ -557,7 +557,8 @@ HTTP-only check of the shell would not exercise the ASGI bridge.
 ## Next Steps
 
 ### Phase 1: Editor + Persistence
-- [ ] Monaco editor for file editing
+- [x] Read-only CodeMirror 6 view of the starter's files (`apps/shell/src/editor.ts`, loaded lazily)
+- [ ] Editing, with Python reload that keeps `/data`
 - [x] IDBFS for SQLite persistence
 - [ ] esbuild-wasm for React bundling
 - [ ] Hot reload for Python code changes

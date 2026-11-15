@@ -12,6 +12,15 @@ import manifest from '../../examples/counter/static/build/.vite/manifest.json?ra
 import browserInertia from './browser_inertia.py?raw';
 import type { VirtualFileSystem } from './types';
 
+/** The starter's own files, by path inside the project, as the editor shows them. */
+export const counterSources: Record<string, string> = {
+  'app.py': app,
+  'templates/app.html': template,
+  'frontend/app.js': frontend,
+  'frontend/app.css': styles,
+  'pyproject.toml': pyproject,
+};
+
 export const counterFiles: VirtualFileSystem = {
   '/browser_inertia.py': browserInertia,
   '/examples/counter/app.py': app,
