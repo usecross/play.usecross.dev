@@ -542,10 +542,9 @@ print(os.listdir('/examples/counter'))
 
 ### Cloudflare Workers Static Assets
 
-Pushes to `main` deploy automatically: the `deploy` job in
-`.github/workflows/ci.yml` runs after the tests pass, then tests the live site.
-See the [README](../README.md#deployment) for the API token it needs and for
-manual deploys.
+Cloudflare Workers Builds deploys every push to `main` from GitHub and
+uploads a preview version for other branches. See the
+[README](../README.md#deployment) for its build settings.
 
 `bun run deploy` builds the shell, then publishes its static assets using
 `wrangler.jsonc`. There is no Cloudflare Pages project or server-side Worker
@@ -575,12 +574,9 @@ and PyPI at runtime; they are not part of the static asset upload.
 Deploying can create that hostname's DNS record in the `usecross.dev` zone.
 Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
 
-The deploy job serializes production deploys with a `production-deploy`
-concurrency group and skips any commit that is no longer the tip of `main`, so
-an older revision never publishes after a newer one. After publishing, it runs
-the full browser suite against https://play.usecross.dev
-(`PLAYWRIGHT_BASE_URL`). An HTTP-only check of the shell would not exercise the
-ASGI bridge.
+Workers Builds does not wait for the GitHub CI checks. To verify a deploy or
+a preview, run the browser suite against it with `PLAYWRIGHT_BASE_URL`; an
+HTTP-only check of the shell would not exercise the ASGI bridge.
 
 ## Next Steps
 

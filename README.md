@@ -123,17 +123,22 @@ Hosting uses Cloudflare **Workers Static Assets**, not Pages:
 - Custom domain: `play.usecross.dev`
 - Fallback: `play-usecross-dev.patrick-arminio.workers.dev`
 
-Every push to `main` deploys automatically. The CI workflow's `deploy` job runs after the tests pass, publishes with `bun run deploy`, then runs the browser suite against https://play.usecross.dev. Deploys run one at a time, and a commit that is no longer the tip of `main` is skipped, so an older revision never replaces a newer one.
+Cloudflare's [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/) deploys the site from GitHub; there is no deploy workflow or API token in this repository. It is set up on the `play-usecross-dev` Worker under **Settings → Builds**:
 
-The job needs a `CLOUDFLARE_API_TOKEN` repository secret: a Cloudflare API token made from the **Edit Cloudflare Workers** template, scoped to account `8a22aaadda6af656a4fe3835b90450dd` and the `usecross.dev` zone. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+- Repository: `usecross/play.usecross.dev`, root directory `/`, production branch `main`
+- Build command: `bun run build` (Workers Builds installs dependencies from `bun.lock` first)
+- Deploy command: `npx wrangler deploy`
+- Other branches: builds on, with `npx wrangler versions upload`, so each branch gets a preview URL
 
-To deploy by hand, which you should rarely need, make sure no CI deploy is running, then:
+Every push to `main` deploys. Workers Builds does not wait for the GitHub CI checks, so keep `main` green. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
+
+To check a deploy or a preview in a real browser, run the browser suite against it:
 
 ```bash
-bunx wrangler whoami
-bun run deploy
 PLAYWRIGHT_BASE_URL=https://play.usecross.dev bun run test
 ```
+
+`bun run deploy` still deploys by hand with your own `bunx wrangler login`. Avoid it while a Workers Builds deploy is running.
 
 ## Scope and roadmap
 
