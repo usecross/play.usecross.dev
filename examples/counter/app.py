@@ -1,11 +1,15 @@
 """Real CrossInertia + FastAPI running in Pyodide.
 
-State is intentionally in-memory in this milestone. SQLite/IDBFS follows later.
+The count lives in SQLite under PLAYGROUND_DATA_DIR, which the playground
+persists to IndexedDB, so it survives a full page reload.
 All routes are async: Pyodide cannot run Starlette's thread-pool file handlers
 or FastAPI's synchronous dependencies.
 """
 
 import mimetypes
+import os
+import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Literal
 
@@ -18,6 +22,7 @@ from starlette.responses import RedirectResponse, Response
 
 BASE_DIR = Path(__file__).resolve().parent
 BUILD_DIR = BASE_DIR / "static" / "build"
+DATABASE = Path(os.environ.get("PLAYGROUND_DATA_DIR", BASE_DIR)) / "counter.sqlite3"
 
 response = BrowserInertiaResponse(
     template_dir=str(BASE_DIR / "templates"),
@@ -27,7 +32,26 @@ response = BrowserInertiaResponse(
 )
 
 app = FastAPI()
-counter_value = 0
+
+UPDATES = {
+    "increment": "UPDATE counter SET value = value + 1",
+    "decrement": "UPDATE counter SET value = value - 1",
+    "reset": "UPDATE counter SET value = 0",
+}
+
+
+def connect() -> sqlite3.Connection:
+    return sqlite3.connect(DATABASE)
+
+
+with closing(connect()) as db, db:
+    db.execute("CREATE TABLE IF NOT EXISTS counter (value INTEGER NOT NULL)")
+    db.execute("INSERT INTO counter SELECT 0 WHERE NOT EXISTS (SELECT 1 FROM counter)")
+
+
+def read_count() -> int:
+    with closing(connect()) as db:
+        return db.execute("SELECT value FROM counter").fetchone()[0]
 
 
 class CounterAction(BaseModel):
@@ -44,19 +68,13 @@ async def get_counter(request: Request) -> Response:
     # Call the published dependency directly inside an async route, avoiding
     # FastAPI's thread-pool dispatch for synchronous dependencies.
     inertia = get_inertia(request, response)
-    return inertia.render("Counter", {"count": counter_value})
+    return inertia.render("Counter", {"count": read_count()})
 
 
 @app.post("/counter")
 async def post_counter(request: Request, body: CounterAction) -> RedirectResponse:
-    global counter_value
-
-    if body.action == "increment":
-        counter_value += 1
-    elif body.action == "decrement":
-        counter_value -= 1
-    else:
-        counter_value = 0
+    with closing(connect()) as db, db:
+        db.execute(UPDATES[body.action])
 
     return RedirectResponse(request.url_for("get_counter"), status_code=303)
 
@@ -79,7 +97,7 @@ async def serve_static(path: str) -> Response:
 async def health() -> dict[str, object]:
     return {
         "status": "ok",
-        "counter": counter_value,
+        "counter": read_count(),
         "cross_inertia_version": cross_inertia.__version__,
         "response_class": f"{type(response).__module__}.{type(response).__name__}",
     }

@@ -17,6 +17,17 @@ import type { HttpRequest, HttpResponse, WorkerMessage, VirtualFileSystem } from
 declare const self: DedicatedWorkerGlobalScope;
 
 let pyodide: PyodideInterface | null = null;
+
+// The starter's data directory, kept in IndexedDB across page reloads. Only
+// this directory persists; the example's code comes from the current deploy.
+const DATA_DIR = '/data';
+
+/** Load (populate) or save the data directory's IndexedDB copy. */
+function syncData(populate: boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    pyodide!.FS.syncfs(populate, (error?: unknown) => (error ? reject(error) : resolve()));
+  });
+}
 let initialized = false;
 
 // Queue to serialize concurrent http-request handling
@@ -40,6 +51,10 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
   pyodide = await loadPyodide({
     indexURL: `https://cdn.jsdelivr.net/pyodide/v${runtime.pyodideVersion}/full/`,
   });
+
+  pyodide.FS.mkdirTree(DATA_DIR);
+  pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, DATA_DIR);
+  await syncData(true);
 
   // Load user files into virtual filesystem if provided
   if (files) {
@@ -77,7 +92,7 @@ starter['project']['dependencies']
     // cross-web needs newer typing extensions than Pyodide's default. Install
     // that pin BEFORE loading Pydantic, which otherwise installs the old wheel.
     await micropip.install(packages.filter(pkg => pkg.startsWith('typing-extensions==')));
-    await pyodide.loadPackage(['pydantic', 'MarkupSafe']);
+    await pyodide.loadPackage(['pydantic', 'MarkupSafe', 'sqlite3']);
     // Installation failures are fatal: never substitute a fake CrossInertia.
     await micropip.install(packages);
   } finally {
@@ -106,6 +121,8 @@ import asgi_bridge
   // imports/templates/configuration must fail initialization, not the first visit.
   pyodide.runPython(`
 import cross_inertia
+import os
+os.environ['PLAYGROUND_DATA_DIR'] = '${DATA_DIR}'
 sys.path.insert(0, '/examples/counter')
 from app import app, response as inertia_response
 inertia_response.get_manifest()
@@ -199,6 +216,8 @@ async function processRequestQueue() {
     
     try {
       const response = await handleHttpRequest(request);
+      // Save before answering, so a reload right after a response keeps it.
+      await syncData(false);
       port.postMessage({ type: 'http-response', response });
     } catch (error) {
       console.error('[Python Worker] Error:', error);

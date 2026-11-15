@@ -70,7 +70,7 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
   expect(errors).toEqual([]);
 });
 
-test('counter mutations and preview reload stay inside the ASGI mount', async ({ page }) => {
+test('counter mutations stay inside the ASGI mount and persist in IndexedDB', async ({ page, context, browser }) => {
   await ready(page);
   const frame = page.frameLocator('#preview');
   const counter = frame.getByRole('status', { name: 'Counter value' });
@@ -83,11 +83,25 @@ test('counter mutations and preview reload stay inside the ASGI mount', async ({
   await expect.poll(() => page.frames().find(frame => frame.parentFrame())?.url())
     .toMatch(/\/preview\/counter$/);
   await page.getByRole('button', { name: 'Reload Preview' }).click();
-  await expect(counter).toHaveText('1'); // Same worker, same in-memory Python state.
+  await expect(counter).toHaveText('1');
 
+  // A full reload starts a new Python worker, which reads SQLite back from IndexedDB.
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Ready', { timeout: 120_000 });
-  await expect(counter).toHaveText('0'); // Persistence is explicitly not implemented yet.
+  await expect(counter).toHaveText('1');
+
+  // So does a new tab after every tab has closed.
+  await page.close();
+  const reopened = await context.newPage();
+  await ready(reopened);
+  await expect(reopened.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('1');
+
+  // Control: another browser profile has its own IndexedDB, so it starts at 0.
+  const otherProfile = await browser.newContext();
+  const other = await otherProfile.newPage();
+  await ready(other);
+  await expect(other.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('0');
+  await otherProfile.close();
 });
 
 test('a second tab waits instead of sharing or answering for the active runtime', async ({ page, context }) => {
@@ -113,10 +127,10 @@ test('a second tab waits instead of sharing or answering for the active runtime'
   await frame.getByRole('button', { name: '+', exact: true }).click();
   await expect(counter).toHaveText('2');
 
-  // Closing the active tab hands the runtime to the waiting one, with fresh state.
+  // Closing the active tab hands the runtime to the waiting one, which loads the saved count.
   await page.close();
   await expect(second.locator('#status')).toHaveText('Ready', { timeout: 120_000 });
-  await expect(second.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('0');
+  await expect(second.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('2');
 });
 
 test('published protocol handles partial reloads, version conflicts and validation', async ({ page }) => {
