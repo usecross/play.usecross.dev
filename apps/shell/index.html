@@ -101,6 +101,23 @@
       font-size: 0.8125rem;
     }
 
+    .apply-error {
+      flex-shrink: 0;
+      max-height: 40%;
+      overflow: auto;
+      margin: 0;
+      padding: 0.75rem 1rem;
+      border-top: 2px solid #d93025;
+      background: #fdecea;
+      color: #8a1c13;
+      font: 0.75rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+      white-space: pre-wrap;
+    }
+
+    .editor-note code, .editor-note kbd {
+      font: 0.75rem ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
     .editor-note {
       padding: 0.5rem 1rem;
       border-top: 1px solid #ddd;
@@ -168,9 +185,11 @@
       <div id="editor" class="editor">
         <p class="editor-note">Loading the starter's files...</p>
       </div>
+      <pre id="apply-error" class="apply-error" role="alert" hidden></pre>
       <p class="editor-note">
-        The FastAPI and CrossInertia app on the right runs in your browser. Its count is saved in
-        SQLite in your browser's storage. These files are read-only for now; editing comes next.
+        The FastAPI and CrossInertia app on the right runs in your browser, and its count is saved
+        in your browser. Edit <code>app.py</code> or the template: changes apply when you pause
+        typing or press <kbd>⌘S</kbd>/<kbd>Ctrl+S</kbd>. Edits are not kept when you reload the page yet.
       </p>
     </div>
     

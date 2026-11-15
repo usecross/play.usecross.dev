@@ -1,10 +1,11 @@
 /**
- * Read-only code view of the starter's files. Loaded lazily by main.ts so
- * CodeMirror never delays the Python runtime.
+ * Code view of the starter's files. Editable files become writable once the
+ * shell calls setEditable(true), after Python is ready. Loaded lazily by
+ * main.ts so CodeMirror never delays the Python runtime.
  */
 import { basicSetup } from 'codemirror';
-import { EditorState, type Extension } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { Compartment, EditorState, type Extension } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
 import { StreamLanguage } from '@codemirror/language';
 import { python } from '@codemirror/lang-python';
 import { html } from '@codemirror/lang-html';
@@ -20,7 +21,16 @@ function language(path: string): Extension {
   return javascript({ jsx: true, typescript: path.endsWith('.ts') || path.endsWith('.tsx') });
 }
 
-export function mountEditor(container: HTMLElement, files: Record<string, string>) {
+export interface EditorOptions {
+  /** Paths that can be edited once setEditable(true) is called. */
+  editable: string[];
+  /** Called with a file's full contents after each edit. */
+  onChange: (path: string, content: string) => void;
+  /** Called on Cmd/Ctrl+S. */
+  onSave: () => void;
+}
+
+export function mountEditor(container: HTMLElement, files: Record<string, string>, options: EditorOptions) {
   const tabs = document.createElement('div');
   tabs.className = 'file-tabs';
   tabs.setAttribute('role', 'tablist');
@@ -31,10 +41,23 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
   panel.id = 'code-panel';
   panel.setAttribute('role', 'tabpanel');
 
-  // One state per file keeps each file's scroll position and selection.
+  let enabled = false;
+  const access = new Compartment();
+  const readOnly = (path: string) => EditorState.readOnly.of(!(enabled && options.editable.includes(path)));
+
+  // One state per file keeps each file's scroll position, selection and history.
   const states = new Map(Object.entries(files).map(([path, doc]) => [path, EditorState.create({
     doc,
-    extensions: [basicSetup, language(path), EditorState.readOnly.of(true), EditorView.lineWrapping],
+    extensions: [
+      keymap.of([{ key: 'Mod-s', run: () => { options.onSave(); return true; } }]),
+      basicSetup,
+      language(path),
+      access.of(readOnly(path)),
+      EditorView.lineWrapping,
+      EditorView.updateListener.of(update => {
+        if (update.docChanged) options.onChange(path, update.state.doc.toString());
+      }),
+    ],
   })]));
   const [first] = states.keys();
   const view = new EditorView({ state: states.get(first)!, parent: panel });
@@ -44,6 +67,7 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
     const button = document.createElement('button');
     button.type = 'button';
     button.textContent = path;
+    if (!options.editable.includes(path)) button.title = 'Read-only for now';
     button.setAttribute('role', 'tab');
     button.setAttribute('aria-controls', panel.id);
     button.addEventListener('click', () => select(path));
@@ -55,6 +79,7 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
     states.set(current, view.state);
     current = path;
     view.setState(states.get(path)!);
+    view.dispatch({ effects: access.reconfigure(readOnly(path)) });
     buttons.forEach(button => {
       const selected = button.textContent === path;
       button.setAttribute('aria-selected', String(selected));
@@ -78,4 +103,11 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
 
   select(first);
   container.replaceChildren(tabs, panel);
+
+  return {
+    setEditable(value: boolean) {
+      enabled = value;
+      view.dispatch({ effects: access.reconfigure(readOnly(current)) });
+    },
+  };
 }

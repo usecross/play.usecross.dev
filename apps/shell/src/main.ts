@@ -3,7 +3,7 @@
  * Registers the Service Worker, starts Python and sets up the preview.
  */
 
-import { counterFiles, counterSources } from '@play.usecross.dev/runner/counter-files';
+import { STARTER_DIR, counterFiles, counterSources, editableSources } from '@play.usecross.dev/runner/counter-files';
 
 // Status display
 const statusEl = document.getElementById('status') as HTMLElement;
@@ -190,6 +190,7 @@ async function initialize() {
     // Keep the frame blank until BOTH the SW and Python app are ready.
     previewFrame.src = '/preview/';
     reloadBtn.disabled = false;
+    editor.then(handle => handle?.setEditable(true));
   } catch (error) {
     pythonWorker?.terminate();
     pythonWorker = null;
@@ -221,11 +222,54 @@ window.addEventListener('message', (event) => {
 // Start initialization
 initialize();
 
+// Edits waiting to be applied, by starter path.
+const pendingEdits: Record<string, string> = {};
+let applyTimer: ReturnType<typeof setTimeout> | undefined;
+const applyErrorEl = document.getElementById('apply-error') as HTMLElement;
+
+function editChanged(path: string, content: string) {
+  pendingEdits[path] = content;
+  clearTimeout(applyTimer);
+  applyTimer = setTimeout(applyEdits, 800);
+}
+
+/** Send pending edits to Python; on success reload the preview, else show the traceback. */
+function applyEdits() {
+  clearTimeout(applyTimer);
+  const worker = pythonWorker;
+  const paths = Object.keys(pendingEdits);
+  if (!worker || paths.length === 0) return;
+  const files = Object.fromEntries(paths.map(path => [`${STARTER_DIR}/${path}`, pendingEdits[path]]));
+  paths.forEach(path => delete pendingEdits[path]);
+
+  updateStatus('Applying your changes...');
+  const channel = new MessageChannel();
+  channel.port1.onmessage = ({ data }) => {
+    if (data.type !== 'applied') return;
+    if (data.error) {
+      applyErrorEl.textContent = data.error;
+      applyErrorEl.hidden = false;
+      applyErrorEl.scrollTop = applyErrorEl.scrollHeight; // The error message is last.
+      updateStatus('Not applied: the previous version is still running');
+    } else {
+      applyErrorEl.hidden = true;
+      previewFrame.contentWindow?.location.reload();
+      updateStatus('Changes applied');
+    }
+  };
+  worker.postMessage({ type: 'apply-files', files }, [channel.port2]);
+}
+
 // The editor loads in its own chunk, so it never delays Python.
 const editorEl = document.getElementById('editor') as HTMLElement;
-import('./editor')
-  .then(({ mountEditor }) => mountEditor(editorEl, counterSources))
+const editor = import('./editor')
+  .then(({ mountEditor }) => mountEditor(editorEl, counterSources, {
+    editable: editableSources,
+    onChange: editChanged,
+    onSave: applyEdits,
+  }))
   .catch(error => {
     console.error('[Shell] Editor failed to load:', error);
     editorEl.textContent = 'The code view failed to load.';
+    return null;
   });

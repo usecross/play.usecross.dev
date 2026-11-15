@@ -261,9 +261,15 @@ a time, so syncs never overlap.
 - Pyodide ships `sqlite3` as a separate package; the worker loads it with
   `pyodide.loadPackage`.
 
-**Future: reload code without losing data.** With an editor, changing Python
-files should re-import the app while keeping `/data`: close connections, sync,
-clear the app's modules from `sys.modules`, and import again.
+**Code edits keep data.** Editing `app.py` or the template in the shell sends
+an `apply-files` message to the worker. `apply_files` in the ASGI bridge writes
+the files, drops `app` from `sys.modules`, and imports it again, checking the
+manifest and template as initialization does. `/data` is untouched, so the
+count survives. If the new code fails, it restores the previous files and
+module, so the last working version keeps serving, and returns a traceback
+trimmed to the starter's own files. Applies and preview requests share one
+serial queue in the worker, and the worker never writes `.pyc` files, so a
+fast re-edit can't load stale bytecode.
 
 ### Phase 2: Django Migrations
 
@@ -430,7 +436,7 @@ setTimeout(() => {
 
 ### What Doesn't Work Yet
 ❌ Real asset bundling (CDN/inline only)  
-❌ Editing files (the CodeMirror view is read-only)  
+❌ Editing the frontend and `pyproject.toml`; saving edits across reloads  
 ❌ WSGI/Django  
 ❌ WebSocket/SSE  
 ❌ File uploads  
@@ -558,10 +564,10 @@ HTTP-only check of the shell would not exercise the ASGI bridge.
 
 ### Phase 1: Editor + Persistence
 - [x] Read-only CodeMirror 6 view of the starter's files (`apps/shell/src/editor.ts`, loaded lazily)
-- [ ] Editing, with Python reload that keeps `/data`
+- [x] Editing `app.py` and the template, with a Python reload that keeps `/data`
 - [x] IDBFS for SQLite persistence
 - [ ] esbuild-wasm for React bundling
-- [ ] Hot reload for Python code changes
+- [x] Hot reload for Python code changes
 
 ### Phase 2: Django
 - [ ] WSGI bridge implementation

@@ -21,6 +21,12 @@ export const counterSources: Record<string, string> = {
   'pyproject.toml': pyproject,
 };
 
+/** Where counterSources live in Pyodide's file system. */
+export const STARTER_DIR = '/examples/counter';
+
+/** Sources the playground can apply edits to; the rest come in later steps. */
+export const editableSources = ['app.py', 'templates/app.html'];
+
 export const counterFiles: VirtualFileSystem = {
   '/browser_inertia.py': browserInertia,
   '/examples/counter/app.py': app,

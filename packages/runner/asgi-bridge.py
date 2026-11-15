@@ -125,6 +125,48 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def apply_files(files: Dict[str, str]) -> Optional[str]:
+    """Write edited starter files and re-import the app.
+
+    Returns None on success. On failure, restores the previous files and app
+    module, so the last working version keeps serving, and returns the
+    traceback. The data directory is never touched, so app data survives.
+    """
+    import importlib
+    import sys
+    import traceback
+
+    previous = {}
+    for path in files:
+        with open(path) as file:
+            previous[path] = file.read()
+    old_app = sys.modules.pop('app', None)
+    try:
+        for path, content in files.items():
+            with open(path, 'w') as file:
+                file.write(content)
+        importlib.invalidate_caches()
+        app = importlib.import_module('app')
+        # Check what initialization checks: manifest and template load.
+        app.response.get_manifest()
+        app.response.templates.get_template('app.html')
+        return None
+    except BaseException as exc:
+        # Show only the starter's own frames (Python files and Jinja
+        # templates), not importlib's or the bridge's, then the error itself.
+        frames = [f for f in traceback.extract_tb(exc.__traceback__)
+                  if f.filename.startswith('/examples/counter/')]
+        lines = ['Traceback (most recent call last):\n', *traceback.format_list(frames)] if frames else []
+        error = ''.join(lines + traceback.format_exception_only(type(exc), exc))
+        for path, content in previous.items():
+            with open(path, 'w') as file:
+                file.write(content)
+        sys.modules.pop('app', None)
+        if old_app is not None:
+            sys.modules['app'] = old_app
+        return error
+
+
 def _build_asgi_headers(headers: Dict[str, str]) -> List[tuple]:
     """Convert headers dict to ASGI format (list of byte tuples)"""
     asgi_headers = []
