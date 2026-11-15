@@ -28,7 +28,6 @@ response = BrowserInertiaResponse(
     template_dir=str(BASE_DIR / "templates"),
     manifest_path=str(BUILD_DIR / ".vite" / "manifest.json"),
     vite_entry="frontend/app.js",
-    asset_url_prefix="/preview/static/build",
 )
 
 app = FastAPI()

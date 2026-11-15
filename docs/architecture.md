@@ -190,8 +190,9 @@ imports. Dynamic esbuild-wasm compilation is not implemented yet.
 
 `BrowserInertiaResponse` inherits rendering unchanged and only forces
 production-mode detection, provides an explicit Vite URL to avoid port scans,
-and disables SSR. An explicit upstream runtime-mode option should eventually
-replace that subclass.
+disables SSR, and adds the request's ASGI `root_path` to asset URLs during each
+render. Upstream support for an explicit runtime mode and for `root_path` in
+asset URLs should eventually replace that subclass.
 
 CrossInertia 0.22.1 cannot render these plain props inside Pyodide's running
 event loop without attempting to start a thread; 0.22.2 can, and is pinned in

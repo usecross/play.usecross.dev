@@ -81,7 +81,7 @@ packages/runner/
   sw.ts                          Browser fetch interception and virtual cookies
   python-worker.ts               Pyodide installation, VFS, serialized requests
   asgi-bridge.py                  HTTP → ASGI adapter
-  browser_inertia.py              Runtime-mode shim, not a protocol implementation
+  browser_inertia.py              Runtime-mode and mount-path shim, not a protocol implementation
   counter-files.ts                Imports actual example files as raw VFS contents
 packages/starters/
   runtime.json                   Pyodide version
@@ -111,7 +111,7 @@ Preview request: /preview/counter
   → Response back through the bridge to the browser
 ```
 
-`BrowserInertiaResponse` subclasses the published response class only to force production mode without an HTTP probe, avoid automatic socket-based port selection, and disable SSR. Rendering is inherited unchanged. The starter calls the library's dependency from an async route to avoid FastAPI's sync-dependency thread pool. See [architecture](./docs/architecture.md) and [milestone details](./docs/real-cross-inertia.md).
+`BrowserInertiaResponse` subclasses the published response class only to force production mode without an HTTP probe, avoid automatic socket-based port selection, disable SSR, and add the `/preview` mount (ASGI `root_path`) to asset URLs. Rendering is inherited unchanged, and the starter's own code has no `/preview` in it. The starter calls the library's dependency from an async route to avoid FastAPI's sync-dependency thread pool. See [architecture](./docs/architecture.md) and [milestone details](./docs/real-cross-inertia.md).
 
 ## Deployment
 
