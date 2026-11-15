@@ -153,10 +153,12 @@ test('published protocol handles partial reloads, version conflicts and validati
 });
 
 test('a failed real wheel download fails visibly instead of substituting a stub', async ({ page, context }) => {
-  await context.route('**/cross_inertia-*.whl', route => route.fulfill({ status: 503, body: 'Wheel unavailable for failure-path test' }));
+  // A network failure: micropip ignores HTTP status, so an error page would
+  // fail PyPI's checksum check instead, with a less specific message.
+  await context.route('**/cross_inertia-*.whl', route => route.abort('failed'));
   await page.goto('/');
   await expect(page.locator('#status')).toContainText('Failed to initialize:', { timeout: 120_000 });
-  await expect(page.locator('#status')).toContainText(/503|fetch|download/i);
+  await expect(page.locator('#status')).toContainText(/failed to fetch/i);
   await expect(page.locator('#preview')).toHaveAttribute('src', 'about:blank');
   await expect(page.getByRole('button', { name: 'Reload Preview' })).toBeDisabled();
 });
