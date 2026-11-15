@@ -3,7 +3,7 @@
  * Registers the Service Worker, starts Python and sets up the preview.
  */
 
-import { counterFiles } from '@play.usecross.dev/runner/counter-files';
+import { counterFiles, counterSources } from '@play.usecross.dev/runner/counter-files';
 
 // Status display
 const statusEl = document.getElementById('status') as HTMLElement;
@@ -220,3 +220,12 @@ window.addEventListener('message', (event) => {
 
 // Start initialization
 initialize();
+
+// The editor loads in its own chunk, so it never delays Python.
+const editorEl = document.getElementById('editor') as HTMLElement;
+import('./editor')
+  .then(({ mountEditor }) => mountEditor(editorEl, counterSources))
+  .catch(error => {
+    console.error('[Shell] Editor failed to load:', error);
+    editorEl.textContent = 'The code view failed to load.';
+  });

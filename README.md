@@ -25,7 +25,7 @@ See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraint
 
 ### Not implemented yet
 
-- Monaco and editable projects
+- Editing the starter's files (a read-only CodeMirror view of them is in place)
 - Dynamic esbuild-wasm bundling (the fixed ESM starter imports React/Inertia from pinned CDN URLs)
 - Django/WSGI, SSR, WebSockets/SSE, or cross-origin runner isolation
 - Async prop callbacks that need an event loop/thread bridge; this milestone uses plain props
@@ -143,7 +143,7 @@ PLAYWRIGHT_BASE_URL=https://play.usecross.dev bun run test
 ## Scope and roadmap
 
 1. Add an explicit upstream runtime-mode option, then remove the browser mode subclass.
-2. Add Monaco and dynamic frontend bundling.
+2. Make the starter editable, then add dynamic frontend bundling (see the editor milestone plan).
 3. Expand framework support and harden runner isolation.
 
 Cross-Auth playgrounds are outside this repository's current scope.
