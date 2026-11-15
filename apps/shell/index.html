@@ -76,8 +76,14 @@
       font-size: 0.875rem;
     }
     
-    .preview-toolbar button:hover {
+    .preview-toolbar button:hover:not(:disabled) {
       background: #0056b3;
+    }
+
+    .preview-toolbar button:disabled {
+      background: #c4c9d0;
+      color: #f5f6f7;
+      cursor: not-allowed;
     }
     
     .preview-toolbar .status {
@@ -119,25 +125,24 @@
 <body>
   <header>
     <h1>CrossInertia Playground</h1>
-    <p>Phase 0 — HTTP cycle proof with Service Worker + Pyodide ASGI bridge</p>
+    <p>Real CrossInertia and FastAPI, running in your browser with Pyodide</p>
   </header>
   
   <main>
     <div class="editor-panel">
       <div class="code-info">
-        <h2>Phase 0 Status</h2>
-        <p>This minimal shell demonstrates the planned architecture:</p>
+        <h2>Counter example</h2>
+        <p>
+          The preview runs a FastAPI app with the real CrossInertia library inside
+          your browser. There is no Python server.
+        </p>
         <ul>
-          <li>Service Worker registration (check console)</li>
-          <li>Preview iframe for running examples</li>
-          <li>File editor planned for Phase 1 (Monaco)</li>
+          <li>A Service Worker sends the preview's requests to Python running in Pyodide.</li>
+          <li>Each click is a real Inertia round trip: POST, 303 redirect, then a JSON page update.</li>
+          <li>The count lives in Python memory, so reloading this page resets it.</li>
         </ul>
         <p style="margin-top: 1rem;">
-          <strong>Current example:</strong> Counter app with FastAPI + CrossInertia
-        </p>
-        <p>
-          The counter example lives in <code>examples/counter/</code> and demonstrates
-          a complete Inertia form POST → 303 redirect → render cycle through Pyodide.
+          An editor for the example's files is coming next.
         </p>
       </div>
     </div>

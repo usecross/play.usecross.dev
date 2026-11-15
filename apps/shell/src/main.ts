@@ -1,6 +1,6 @@
 /**
  * CrossInertia Playground Shell
- * Phase 0: Service Worker registration and preview setup
+ * Registers the Service Worker, starts Python and sets up the preview.
  */
 
 import { counterFiles } from '@play.usecross.dev/runner/counter-files';
