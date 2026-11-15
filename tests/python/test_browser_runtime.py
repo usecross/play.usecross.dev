@@ -2,6 +2,7 @@
 
 import json
 import sys
+import tomllib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -49,8 +50,10 @@ class BrowserRuntimeTests(unittest.IsolatedAsyncioTestCase):
             threads.assert_not_called()
             probe.assert_not_called()
             ports.assert_not_called()
-        requirements = (ROOT / "packages/starters/requirements.txt").read_text()
-        self.assertIn(f"cross-inertia=={cross_inertia.__version__}\n", requirements)
+        starter = tomllib.loads((ROOT / "examples/counter/pyproject.toml").read_text())
+        self.assertIn(
+            f"cross-inertia=={cross_inertia.__version__}", starter["project"]["dependencies"]
+        )
 
 
 if __name__ == "__main__":

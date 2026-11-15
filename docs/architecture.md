@@ -42,7 +42,7 @@ Those contents come from the actual repository files through raw imports.
 ### Initial page load
 
 1. The shell registers the Service Worker and waits for page control.
-2. It initializes Pyodide, installs CrossInertia and the direct dependency pins from PyPI, writes the example VFS, and imports/validates the starter.
+2. It initializes Pyodide, writes the example VFS, installs the dependencies listed in the starter's `pyproject.toml` from PyPI, and imports/validates the starter.
 3. Only after success does it navigate the iframe to `/preview/`.
 4. The Service Worker forwards the full request URL with `rootPath: "/preview"`.
 5. The ASGI scope retains `path=/preview/counter` and `root_path=/preview`. FastAPI matches the unprefixed `/counter` route.
@@ -195,7 +195,7 @@ replace that subclass.
 
 CrossInertia 0.22.1 cannot render these plain props inside Pyodide's running
 event loop without attempting to start a thread; 0.22.2 can, and is pinned in
-`packages/starters/requirements.txt`. No CrossInertia source patch or
+`examples/counter/pyproject.toml`. No CrossInertia source patch or
 fake-library fallback is applied here.
 
 See [real CrossInertia milestone](./real-cross-inertia.md) for the regression

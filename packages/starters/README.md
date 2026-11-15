@@ -3,7 +3,7 @@
 The current starter is the fixed FastAPI/React counter in `examples/counter/`.
 
 - `runtime.json` pins Pyodide.
-- `requirements.txt` pins direct Python dependencies, including `cross-inertia==0.22.2`. This is not a full transitive lockfile.
+- The starter's own `examples/counter/pyproject.toml` pins its direct Python dependencies, including `cross-inertia==0.22.2`. This is not a full transitive lockfile. The Python worker reads it from the VFS with `tomllib` and installs the list with micropip; `bun run test:python` passes the same list to `uv`.
 - Pyodide provides the WASM-compatible `pydantic_core` and MarkupSafe builds.
 - React 19.3.1 and Inertia React 3.11.0 are pinned CDN imports in the real Jinja template.
 - The fixed browser-native ESM/CSS sources are mapped to Vite-shaped VFS build paths. There is no dynamic frontend bundler yet.

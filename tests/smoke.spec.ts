@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
-const crossInertiaVersion = readFileSync('packages/starters/requirements.txt', 'utf8')
-  .match(/^cross-inertia==(.+)$/m)![1];
+const crossInertiaVersion = readFileSync('examples/counter/pyproject.toml', 'utf8')
+  .match(/"cross-inertia==([^"]+)"/)![1];
 
 async function ready(page: Page) {
   await page.goto('/');

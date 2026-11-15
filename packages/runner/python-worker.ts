@@ -11,7 +11,6 @@
 /// <reference lib="webworker" />
 
 import { loadPyodide, type PyodideInterface } from 'pyodide';
-import requirements from '../starters/requirements.txt?raw';
 import runtime from '../starters/runtime.json';
 import type { HttpRequest, HttpResponse, WorkerMessage, VirtualFileSystem } from './types';
 
@@ -42,15 +41,38 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
     indexURL: `https://cdn.jsdelivr.net/pyodide/v${runtime.pyodideVersion}/full/`,
   });
 
+  // Load user files into virtual filesystem if provided
+  if (files) {
+    console.log('[Python Worker] Loading user files...');
+    for (const [path, content] of Object.entries(files)) {
+      const dirPath = path.split('/').slice(0, -1).join('/');
+      if (dirPath) {
+        pyodide.FS.mkdirTree(dirPath);
+      }
+
+      if (typeof content === 'string') {
+        pyodide.FS.writeFile(path, content);
+      } else {
+        pyodide.FS.writeFile(path, content);
+      }
+    }
+  }
+
   console.log('[Python Worker] Installing packages...');
   
   // Load micropip for package installation
   await pyodide.loadPackage('micropip');
   const micropip = pyodide.pyimport('micropip');
-  
-  const packages = requirements.split('\n')
-    .map(line => line.trim())
-    .filter(line => line && !line.startsWith('#'));
+
+  // The starter's own pyproject.toml lists its dependencies.
+  const dependencies = pyodide.runPython(`
+import tomllib
+with open('/examples/counter/pyproject.toml', 'rb') as file:
+    starter = tomllib.load(file)
+starter['project']['dependencies']
+  `);
+  const packages: string[] = dependencies.toJs();
+  dependencies.destroy();
   try {
     // cross-web needs newer typing extensions than Pyodide's default. Install
     // that pin BEFORE loading Pydantic, which otherwise installs the old wheel.
@@ -79,23 +101,6 @@ import sys
 sys.path.insert(0, '/')
 import asgi_bridge
   `);
-
-  // Load user files into virtual filesystem if provided
-  if (files) {
-    console.log('[Python Worker] Loading user files...');
-    for (const [path, content] of Object.entries(files)) {
-      const dirPath = path.split('/').slice(0, -1).join('/');
-      if (dirPath) {
-        pyodide.FS.mkdirTree(dirPath);
-      }
-      
-      if (typeof content === 'string') {
-        pyodide.FS.writeFile(path, content);
-      } else {
-        pyodide.FS.writeFile(path, content);
-      }
-    }
-  }
 
   // Import the real package and starter before announcing readiness. Missing
   // imports/templates/configuration must fail initialization, not the first visit.

@@ -8,7 +8,7 @@ Replace the old handwritten Inertia response helper with the real Python library
 
 The PyPI `cross-inertia==0.22.1` wheel installs and imports in Pyodide 0.27.8, but rendering inside an async FastAPI route fails with `RuntimeError: can't start new thread`. Its synchronous prop resolver starts a `ThreadPoolExecutor` when an event loop is already running—even for a plain integer counter prop.
 
-Upstream [PR #146](https://github.com/usecross/cross-inertia/pull/146), released as **0.22.2**, resolves plain and sync props in the calling thread without a thread or event loop. `packages/starters/requirements.txt` pins `cross-inertia==0.22.2` from PyPI, with no source patches.
+Upstream [PR #146](https://github.com/usecross/cross-inertia/pull/146), released as **0.22.2**, resolves plain and sync props in the calling thread without a thread or event loop. The starter's `examples/counter/pyproject.toml` pins `cross-inertia==0.22.2` from PyPI, with no source patches.
 
 Do not infer Pyodide support for async prop callbacks from the counter test: in an async route, a callback that returns a coroutine still needs a worker thread, so it needs an async rendering API upstream.
 

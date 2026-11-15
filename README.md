@@ -85,10 +85,10 @@ packages/runner/
   counter-files.ts                Imports actual example files as raw VFS contents
 packages/starters/
   runtime.json                   Pyodide version
-  requirements.txt               Direct Python dependency pins, including CrossInertia
 packages/bundler/                Future in-browser bundler (stub)
 examples/counter/
   app.py                         Real CrossInertia + FastAPI routes
+  pyproject.toml                 Starter's Python dependency pins, including CrossInertia
   templates/app.html             inertia_head() / inertia_body()
   frontend/app.js                 Fixed browser-native ESM starter
   frontend/app.css                Starter styles
