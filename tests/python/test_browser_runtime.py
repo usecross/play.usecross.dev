@@ -51,6 +51,11 @@ class BrowserRuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn(b'script data-page="app"', html.body)
             self.assertIn(b'/preview/static/build/assets/app.js', html.body)
             self.assertIn(b'/preview/static/build/assets/app.css', html.body)
+
+            # Asset URLs follow the mount; the starter itself has no /preview.
+            root = await get_counter(Request({**scope, "path": "/counter", "root_path": ""}))
+            self.assertIn(b'src="/static/build/assets/app.js"', root.body)
+            self.assertNotIn(b"/preview", root.body)
             threads.assert_not_called()
             probe.assert_not_called()
             ports.assert_not_called()

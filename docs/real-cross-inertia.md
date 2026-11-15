@@ -26,13 +26,14 @@ Do not infer Pyodide support for async prop callbacks from the counter test: in 
 
 ## Browser-specific integration
 
-`packages/runner/browser_inertia.py` overrides **only runtime selection**:
+`packages/runner/browser_inertia.py` overrides **only runtime selection and the asset URL mount**:
 
 1. An explicit Vite URL prevents config's automatic socket/port scan.
 2. `is_dev_mode()` returns `False`, so there is no blocking HTTP probe.
 3. SSR is disabled, so there are no SSR HTTP calls or subprocess expectations.
+4. During each render, the asset URL prefix gets the request's ASGI `root_path` (`/preview`), which CrossInertia's fixed prefix ignores. The starter keeps CrossInertia's default `/static/build` and posts back to `usePage().url`, so its code contains no `/preview`.
 
-All rendering, prop filtering, asset versioning, template helpers, and version-conflict handling are inherited from the real library. A future upstream `dev_mode=False` option should replace this small subclass; an AssetProvider abstraction is not required for this milestone.
+All rendering, prop filtering, asset versioning, template helpers, and version-conflict handling are inherited from the real library. Future upstream support for an explicit production mode and for `root_path` in asset URLs should replace this small subclass; an AssetProvider abstraction is not required for this milestone.
 
 All starter routes are async. It calls CrossInertia's synchronous dependency directly within the async route instead of asking FastAPI to execute a sync dependency in a thread pool. Static assets use synchronous VFS reads in an async route, rather than Starlette's thread-based `StaticFiles`/`FileResponse`. The asset endpoint exposes only files under the built `assets/` directory.
 

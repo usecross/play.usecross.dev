@@ -1,14 +1,16 @@
 // Fixed starter: browser-native ESM. Dynamic TSX bundling comes later.
 import { createElement as h, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createInertiaApp, router } from '@inertiajs/react';
+import { createInertiaApp, router, usePage } from '@inertiajs/react';
 
 function Counter({ count }) {
+  const { url } = usePage();
   const [processing, setProcessing] = useState(false);
 
   function submit(action) {
     setProcessing(true);
-    router.post('/preview/counter', { action }, {
+    // Post back to this page; the server redirects to it after the update.
+    router.post(url, { action }, {
       onFinish: () => setProcessing(false),
     });
   }
