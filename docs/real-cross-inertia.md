@@ -61,11 +61,11 @@ The previously always-passing debug specs were replaced by assertions on these b
 
 ## Deliberately not done
 
-- The counter is still a Python global. Preview-only reload retains it; full shell reload creates a new worker and resets it.
-- No SQLite, IDBFS, Monaco, dynamic TSX bundler, Django, SSR, or origin-isolation work is included.
+- The counter was a Python global, reset by a full reload. SQLite in IndexedDB replaced it in the next milestone; see [State Persistence](./architecture.md#state-persistence).
+- No Monaco, dynamic TSX bundler, Django, SSR, or origin-isolation work is included.
 
 ## Next checkpoints
 
 1. Add explicit runtime selection upstream and remove the browser mode subclass.
-2. Add SQLite + IDBFS; test full-page reload persistence without mistaking in-memory worker reuse for persistence.
+2. ~~Add SQLite + IDBFS~~ Done: see [State Persistence](./architecture.md#state-persistence).
 3. Add editor and dynamic bundling on top of the now-proven library integration.

@@ -1,13 +1,17 @@
 """Native regression tests for the exact same upstream wheel used by Pyodide."""
 
 import json
+import os
 import sys
+import tempfile
 import tomllib
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
+# The starter keeps its SQLite database here; the browser uses an IDBFS mount.
+os.environ["PLAYGROUND_DATA_DIR"] = tempfile.mkdtemp()
 sys.path.insert(0, str(ROOT / "packages" / "runner"))
 sys.path.insert(0, str(ROOT / "examples" / "counter"))
 

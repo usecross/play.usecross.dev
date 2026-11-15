@@ -37,6 +37,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Local starter databases (the browser keeps them in IndexedDB)
+*.sqlite3
+
 # Python test/build caches
 __pycache__/
 *.pyc

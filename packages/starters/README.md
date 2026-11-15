@@ -10,4 +10,4 @@ The current starter is the fixed FastAPI/React counter in `examples/counter/`.
 
 CrossInertia 0.22.1 and earlier try to create a thread during prop resolution and fail in Pyodide; 0.22.2 is the minimum. micropip installs every pin from PyPI. Dependency failures stop initialization; no fake library is substituted.
 
-See [milestone notes](../../docs/real-cross-inertia.md) for compatibility evidence and deployment restrictions. SQLite/IDBFS, editor templates, additional frameworks, and dynamic bundling are later milestones.
+See [milestone notes](../../docs/real-cross-inertia.md) for compatibility evidence and deployment restrictions. Editor templates, additional frameworks, and dynamic bundling are later milestones.

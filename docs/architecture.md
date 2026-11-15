@@ -46,14 +46,14 @@ Those contents come from the actual repository files through raw imports.
 3. Only after success does it navigate the iframe to `/preview/`.
 4. The Service Worker forwards the full request URL with `rootPath: "/preview"`.
 5. The ASGI scope retains `path=/preview/counter` and `root_path=/preview`. FastAPI matches the unprefixed `/counter` route.
-6. The route calls `get_inertia(request, response).render("Counter", {"count": counter_value})`.
+6. The route calls `get_inertia(request, response).render("Counter", {"count": read_count()})`, reading the count from SQLite.
 7. CrossInertia reads the VFS manifest and renders the real Jinja `inertia_head()` / `inertia_body()` helpers.
 8. Its template-generated `/preview/static/build/assets/app.js` and `app.css` requests travel through the same bridge and are served from the VFS.
 
 ### Form submission
 
 1. The real Inertia React client POSTs JSON to `/preview/counter`.
-2. FastAPI validates the action and updates the in-memory Python count.
+2. FastAPI validates the action and updates the count in SQLite. The worker saves `/data` to IndexedDB before it answers.
 3. A 303 redirect targets `request.url_for("get_counter")`, preserving `/preview/counter`.
 4. Inertia follows the redirect with `X-Inertia: true`.
 5. CrossInertia returns the actual page JSON, including its manifest-derived asset version and validation error props.
@@ -231,62 +231,38 @@ interface PythonFrameworkRuntime {
 
 ## State Persistence
 
-### Phase 0: In-Memory
+The starter keeps its data in SQLite. The Python worker mounts Emscripten's
+IndexedDB filesystem (IDBFS) at `/data` and tells the app where it is:
+
+```typescript
+pyodide.FS.mkdirTree('/data');
+pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, '/data');
+await syncData(true);  // FS.syncfs(true): load the saved files from IndexedDB
+// os.environ['PLAYGROUND_DATA_DIR'] = '/data', then import the app
+```
 
 ```python
 # examples/counter/app.py
-counter_value = 0  # Global variable
-
-@app.post("/counter")
-async def post_counter(action: str = Form(...)):
-    global counter_value
-    counter_value += 1
-    return RedirectResponse("/counter", status_code=303)
+DATABASE = Path(os.environ.get("PLAYGROUND_DATA_DIR", BASE_DIR)) / "counter.sqlite3"
 ```
 
-**Limitation:** Counter resets on page reload.
+After every request, and before answering it, the worker runs
+`FS.syncfs(false)` to save `/data` back to IndexedDB. A page reload right after
+a response therefore keeps that change. Requests are already processed one at
+a time, so syncs never overlap.
 
-### Phase 1: SQLite + IDBFS
+- **Only `/data` persists.** The example's code is written fresh from each
+  deploy; its data survives deploys.
+- **Scope:** IndexedDB is per browser profile and origin. Branch previews have
+  their own origin, so their data is separate from the live site's.
+- **One writer:** the single-tab Web Lock means only one worker uses the
+  database. A waiting tab loads the saved data when it takes over.
+- Pyodide ships `sqlite3` as a separate package; the worker loads it with
+  `pyodide.loadPackage`.
 
-**Pyodide IDBFS** (IndexedDB filesystem):
-```python
-# Enable persistent filesystem
-pyodide.FS.mkdir('/data')
-pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, '/data')
-
-# After changes, persist to IndexedDB
-pyodide.FS.syncfs(False, callback)
-
-# On reload, restore from IndexedDB
-pyodide.FS.syncfs(True, callback)
-```
-
-**SQLite persistence:**
-```python
-import sqlite3
-
-conn = sqlite3.connect('/data/db.sqlite3')
-# Changes persist across reloads via IDBFS
-```
-
-**Worker reload strategy:**
-```typescript
-async function reset() {
-  // 1. Close SQLite connections
-  await pyodide.runPython('conn.close()');
-  
-  // 2. Sync filesystem to IndexedDB
-  await pyodide.FS.syncfs(false);
-  
-  // 3. Clear Python module cache
-  pyodide.runPython('sys.modules.clear()');
-  
-  // 4. Re-import app
-  pyodide.runPython('from app import app');
-}
-```
-
-This preserves database state while hot-reloading Python code.
+**Future: reload code without losing data.** With an editor, changing Python
+files should re-import the app while keeping `/data`: close connections, sync,
+clear the app's modules from `sys.modules`, and import again.
 
 ### Phase 2: Django Migrations
 
@@ -452,7 +428,6 @@ setTimeout(() => {
 ✅ React + Inertia.js client  
 
 ### What Doesn't Work Yet
-❌ SQLite persistence (in-memory only)  
 ❌ Real asset bundling (CDN/inline only)  
 ❌ Monaco editor (fixed example)  
 ❌ WSGI/Django  
@@ -582,7 +557,7 @@ HTTP-only check of the shell would not exercise the ASGI bridge.
 
 ### Phase 1: Editor + Persistence
 - [ ] Monaco editor for file editing
-- [ ] IDBFS for SQLite persistence
+- [x] IDBFS for SQLite persistence
 - [ ] esbuild-wasm for React bundling
 - [ ] Hot reload for Python code changes
 

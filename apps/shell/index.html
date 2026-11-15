@@ -139,7 +139,7 @@
         <ul>
           <li>A Service Worker sends the preview's requests to Python running in Pyodide.</li>
           <li>Each click is a real Inertia round trip: POST, 303 redirect, then a JSON page update.</li>
-          <li>The count lives in Python memory, so reloading this page resets it.</li>
+          <li>The count is saved in SQLite, stored in your browser's IndexedDB, so it survives a reload.</li>
         </ul>
         <p style="margin-top: 1rem;">
           An editor for the example's files is coming next.

@@ -20,11 +20,11 @@ See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraint
 - ASGI `root_path`: redirects and Inertia URLs stay under `/preview/`
 - Real Jinja template and Vite-shaped manifest resolving VFS JavaScript/CSS
 - Visible initialization failures; no dependency stubs
-- Preview reload (retains the current Python worker's in-memory count)
+- SQLite persisted in IndexedDB: the count survives a full page reload and closing the tab
+- One tab runs Python at a time; another tab waits and takes over with the saved data
 
 ### Not implemented yet
 
-- SQLite / IDBFS persistence: a **full page reload resets the count**
 - Monaco and editable projects
 - Dynamic esbuild-wasm bundling (the fixed ESM starter imports React/Inertia from pinned CDN URLs)
 - Django/WSGI, SSR, WebSockets/SSE, or cross-origin runner isolation
@@ -143,9 +143,8 @@ PLAYWRIGHT_BASE_URL=https://play.usecross.dev bun run test
 ## Scope and roadmap
 
 1. Add an explicit upstream runtime-mode option, then remove the browser mode subclass.
-2. Add SQLite + IDBFS with a persistence-after-full-reload acceptance test.
-3. Add Monaco and dynamic frontend bundling.
-4. Expand framework support and harden runner isolation.
+2. Add Monaco and dynamic frontend bundling.
+3. Expand framework support and harden runner isolation.
 
 Cross-Auth playgrounds are outside this repository's current scope.
 
