@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
-import runtime from '../packages/starters/runtime.json';
+
+const crossInertiaVersion = readFileSync('packages/starters/requirements.txt', 'utf8')
+  .match(/^cross-inertia==(.+)$/m)![1];
 
 async function ready(page: Page) {
   await page.goto('/');
@@ -41,7 +43,7 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
     };
   });
 
-  expect(result.health.cross_inertia_version).toBe(runtime.crossInertia.version);
+  expect(result.health.cross_inertia_version).toBe(crossInertiaVersion);
   expect(result.health.response_class).toBe('browser_inertia.BrowserInertiaResponse');
   expect(result.htmlStatus).toBe(200);
   expect(result.vary).toBe('X-Inertia');
@@ -151,7 +153,7 @@ test('published protocol handles partial reloads, version conflicts and validati
 });
 
 test('a failed real wheel download fails visibly instead of substituting a stub', async ({ page, context }) => {
-  await context.route('**/wheels/**/*.whl', route => route.fulfill({ status: 503, body: 'Wheel unavailable for failure-path test' }));
+  await context.route('**/cross_inertia-*.whl', route => route.fulfill({ status: 503, body: 'Wheel unavailable for failure-path test' }));
   await page.goto('/');
   await expect(page.locator('#status')).toContainText('Failed to initialize:', { timeout: 120_000 });
   await expect(page.locator('#status')).toContainText(/503|fetch|download/i);

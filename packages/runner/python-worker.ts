@@ -57,8 +57,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
     await micropip.install(packages.filter(pkg => pkg.startsWith('typing-extensions==')));
     await pyodide.loadPackage(['pydantic', 'MarkupSafe']);
     // Installation failures are fatal: never substitute a fake CrossInertia.
-    const wheelUrl = new URL(runtime.crossInertia.wheelPath, self.location.origin).href;
-    await micropip.install([wheelUrl, ...packages]);
+    await micropip.install(packages);
   } finally {
     micropip.destroy();
   }

@@ -1,6 +1,6 @@
 # CrossInertia Playground Architecture
 
-**Phase 0 / real-library milestone** technical documentation. See [milestone evidence and the unreleased upstream dependency](./real-cross-inertia.md) before building or deploying this branch. Future-phase sections below are plans, not implemented features.
+**Phase 0 / real-library milestone** technical documentation. See [milestone evidence](./real-cross-inertia.md) for the CrossInertia compatibility findings. Future-phase sections below are plans, not implemented features.
 
 ## Overview
 
@@ -42,7 +42,7 @@ Those contents come from the actual repository files through raw imports.
 ### Initial page load
 
 1. The shell registers the Service Worker and waits for page control.
-2. It initializes Pyodide, installs the real upstream candidate wheel and direct dependency pins, writes the example VFS, and imports/validates the starter.
+2. It initializes Pyodide, installs CrossInertia and the direct dependency pins from PyPI, writes the example VFS, and imports/validates the starter.
 3. Only after success does it navigate the iframe to `/preview/`.
 4. The Service Worker forwards the full request URL with `rootPath: "/preview"`.
 5. The ASGI scope retains `path=/preview/counter` and `root_path=/preview`. FastAPI matches the unprefixed `/counter` route.
@@ -193,13 +193,13 @@ production-mode detection, provides an explicit Vite URL to avoid port scans,
 and disables SSR. An explicit upstream runtime-mode option should eventually
 replace that subclass.
 
-Published 0.22.1 cannot render these plain props inside Pyodide's running event
-loop without attempting to start a thread. This branch therefore builds the
-exact upstream PR #146 candidate recorded in `packages/starters/runtime.json`.
-No CrossInertia source patch or fake-library fallback is applied here.
+CrossInertia 0.22.1 cannot render these plain props inside Pyodide's running
+event loop without attempting to start a thread; 0.22.2 can, and is pinned in
+`packages/starters/requirements.txt`. No CrossInertia source patch or
+fake-library fallback is applied here.
 
 See [real CrossInertia milestone](./real-cross-inertia.md) for the regression
-evidence, remaining async-prop limitations, and release prerequisite.
+evidence and remaining async-prop limitations.
 
 ## PythonFrameworkRuntime Interface
 
@@ -539,8 +539,6 @@ print(os.listdir('/examples/counter'))
 ```
 
 ## Deployment
-
-**Candidate dependency warning:** this branch uses an unreleased upstream wheel. Normal `bun run deploy` is blocked; first release upstream PR #146 and switch to the published pin. See [milestone details](./real-cross-inertia.md). Local builds and Wrangler dry-runs remain available.
 
 ### Cloudflare Workers Static Assets
 

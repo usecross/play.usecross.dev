@@ -49,8 +49,8 @@ class BrowserRuntimeTests(unittest.IsolatedAsyncioTestCase):
             threads.assert_not_called()
             probe.assert_not_called()
             ports.assert_not_called()
-        runtime = json.loads((ROOT / "packages/starters/runtime.json").read_text())
-        self.assertEqual(cross_inertia.__version__, runtime["crossInertia"]["version"])
+        requirements = (ROOT / "packages/starters/requirements.txt").read_text()
+        self.assertIn(f"cross-inertia=={cross_inertia.__version__}\n", requirements)
 
 
 if __name__ == "__main__":

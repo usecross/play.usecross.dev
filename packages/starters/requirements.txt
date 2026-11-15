@@ -1,6 +1,7 @@
 # Direct runtime pins tested with Pyodide 0.27.8 (Python 3.12).
 # Pyodide supplies the matching WASM pydantic_core/MarkupSafe wheels.
-# CrossInertia itself is built from the upstream revision in runtime.json.
+# 0.22.2 is the first release that renders without threads (cross-inertia #146).
+cross-inertia==0.22.2
 cross-web==0.7.0
 fastapi==0.115.12
 starlette==0.46.2

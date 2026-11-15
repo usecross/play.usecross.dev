@@ -9,7 +9,7 @@ An in-browser playground for [CrossInertia](https://github.com/usecross/cross-in
 
 The counter uses the actual CrossInertia renderer for HTML, page JSON, partial reloads, version conflicts, and manifest-generated JavaScript/CSS tags. The handwritten protocol helper and fake-library fallback have been removed.
 
-> **Unreleased upstream dependency:** this branch requires [cross-inertia PR #146](https://github.com/usecross/cross-inertia/pull/146), pinned to commit `391eefd87055d2f9813c46fd58d0e2299460f19e`. Published CrossInertia 0.22.1 attempts to create a thread while resolving props inside an async route, which fails in Pyodide. Development/build commands build a wheel from that exact upstream source, with no local source patches. This is **not** the PyPI 0.22.1 wheel. Normal production deployment is blocked until the dependency is released and the pin is updated. The live site is still the previously deployed bridge demo.
+> **Requires CrossInertia 0.22.2+.** Earlier releases start a thread while resolving props inside an async route, which fails in Pyodide. 0.22.2 ([cross-inertia #146](https://github.com/usecross/cross-inertia/pull/146)) resolves plain and sync props without one. The live site is still the previously deployed bridge demo.
 
 See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraints, and the next steps.
 
@@ -35,8 +35,8 @@ See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraint
 ### Prerequisites
 
 - [Bun](https://bun.sh/) **1.4+** (the checked-in lockfile uses version 2)
-- [uv](https://docs.astral.sh/uv/) and `tar` on `PATH` to build the pinned upstream wheel
-- Internet access to GitHub, PyPI, jsDelivr, and esm.sh
+- [uv](https://docs.astral.sh/uv/) on `PATH` for the native Python test
+- Internet access to PyPI, jsDelivr, and esm.sh
 - For Wrangler / deployment: **Node.js 22+** on `PATH`
 
 ```bash
@@ -45,8 +45,6 @@ bun run dev
 ```
 
 Open http://localhost:3000. The preview stays blank until the Service Worker controls the page and the real Python package and starter are initialized.
-
-`bun run dev` and `bun run build` first run `bun run prepare:runtime`. It downloads the immutable upstream archive, checks its SHA256 against `packages/starters/runtime.json`, and builds a pure-Python wheel with `uv`. Generated wheels live in ignored `apps/shell/public/wheels/`; a cached wheel is reused only when its source metadata and file hash match. No wheel binary is committed.
 
 ### Tests
 
@@ -86,8 +84,8 @@ packages/runner/
   browser_inertia.py              Runtime-mode shim, not a protocol implementation
   counter-files.ts                Imports actual example files as raw VFS contents
 packages/starters/
-  runtime.json                   Exact upstream revision / archive hash / Pyodide version
-  requirements.txt               Direct Python dependency pins
+  runtime.json                   Pyodide version
+  requirements.txt               Direct Python dependency pins, including CrossInertia
 packages/bundler/                Future in-browser bundler (stub)
 examples/counter/
   app.py                         Real CrossInertia + FastAPI routes
@@ -95,7 +93,7 @@ examples/counter/
   frontend/app.js                 Fixed browser-native ESM starter
   frontend/app.css                Starter styles
   static/build/.vite/manifest.json
-scripts/                         Candidate wheel preparation, tests, deployment guard
+scripts/                         Native Python test runner
 ```
 
 The example files are the source of truth—there is no second copy embedded inside TypeScript. The ESM/CSS sources are mapped to build paths inside Pyodide's VFS until dynamic bundling is implemented.
@@ -129,9 +127,8 @@ Hosting uses Cloudflare **Workers Static Assets**, not Pages:
 bunx wrangler whoami
 bun run build
 bunx wrangler deploy --dry-run
+bun run deploy
 ```
-
-**`bun run deploy` is intentionally blocked while this branch uses an unreleased upstream candidate.** Merge/release PR #146, switch to its published wheel, and remove the temporary candidate build/guard before normal deployment. For a separately approved candidate deployment only, the explicit override is `CROSS_INERTIA_ALLOW_UNRELEASED=1 bun run deploy`.
 
 Wrangler needs credentials (`CLOUDFLARE_API_TOKEN` or `bunx wrangler login`) for account `8a22aaadda6af656a4fe3835b90450dd`. Do not change DNS for `auth`, `docs`, or `inertia.usecross.dev`.
 
@@ -139,11 +136,10 @@ Run one production build/deploy at a time across all checkouts. Do not rebuild `
 
 ## Scope and roadmap
 
-1. Release the proven upstream thread-resolution fix and replace the candidate pin.
-2. Add an explicit upstream runtime-mode option, then remove the browser mode subclass.
-3. Add SQLite + IDBFS with a persistence-after-full-reload acceptance test.
-4. Add Monaco and dynamic frontend bundling.
-5. Expand framework support and harden runner isolation.
+1. Add an explicit upstream runtime-mode option, then remove the browser mode subclass.
+2. Add SQLite + IDBFS with a persistence-after-full-reload acceptance test.
+3. Add Monaco and dynamic frontend bundling.
+4. Expand framework support and harden runner isolation.
 
 Cross-Auth playgrounds are outside this repository's current scope.
 

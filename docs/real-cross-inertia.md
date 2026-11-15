@@ -8,11 +8,9 @@ Replace the old handwritten Inertia response helper with the real Python library
 
 The PyPI `cross-inertia==0.22.1` wheel installs and imports in Pyodide 0.27.8, but rendering inside an async FastAPI route fails with `RuntimeError: can't start new thread`. Its synchronous prop resolver starts a `ThreadPoolExecutor` when an event loop is already running—even for a plain integer counter prop.
 
-The existing upstream [PR #146](https://github.com/usecross/cross-inertia/pull/146), commit `391eefd87055d2f9813c46fd58d0e2299460f19e`, resolves plain/sync props without that thread. We test the unchanged upstream code by building a candidate wheel, not by patching CrossInertia or substituting a protocol implementation.
+Upstream [PR #146](https://github.com/usecross/cross-inertia/pull/146), released as **0.22.2**, resolves plain and sync props in the calling thread without a thread or event loop. `packages/starters/requirements.txt` pins `cross-inertia==0.22.2` from PyPI, with no source patches.
 
-`packages/starters/runtime.json` records the exact source revision, archive SHA256, wheel path, and Pyodide version. `scripts/prepare-runtime.ts` verifies the archive and builds the wheel with `uv`. The wheel still reports upstream's source version `0.22.1`, but it is **not the wheel published on PyPI**. Its URL/provenance metadata identify the upstream candidate.
-
-When PR #146 is released, replace this temporary source-wheel preparation with a published version pin and remove the deployment guard. Do not infer Pyodide support for arbitrary async prop callbacks from the counter test: callbacks returning coroutines may still require an async rendering API upstream.
+Do not infer Pyodide support for async prop callbacks from the counter test: in an async route, a callback that returns a coroutine still needs a worker thread, so it needs an async rendering API upstream.
 
 ## What changed
 
@@ -47,7 +45,7 @@ bun run test
 bun run test:production
 ```
 
-The native test forbids `threading.Thread.start`, `httpx.get`, and automatic Vite port discovery while calling the real renderer for JSON and HTML. **It fails against the published PyPI 0.22.1 wheel and passes against the pinned PR #146 wheel.**
+The native test forbids `threading.Thread.start`, `httpx.get`, and automatic Vite port discovery while calling the real renderer for JSON and HTML. **It fails against PyPI 0.22.1 and passes against 0.22.2.**
 
 Browser tests run against both Vite development serving and built assets on Wrangler's local static-assets runtime. They check:
 
@@ -63,14 +61,12 @@ The previously always-passing debug specs were replaced by assertions on these b
 
 ## Deliberately not done
 
-- No upstream PR was merged or published by this work.
-- No candidate build was deployed to production. `bun run deploy` fails before building/uploading unless an explicit unreleased-runtime override is supplied.
+- Nothing from this milestone has been deployed to production yet.
 - The counter is still a Python global. Preview-only reload retains it; full shell reload creates a new worker and resets it.
 - No SQLite, IDBFS, Monaco, dynamic TSX bundler, Django, SSR, or origin-isolation work is included.
 
 ## Next checkpoints
 
-1. Review/merge/release upstream PR #146, then pin its published release and rerun the same tests.
-2. Add explicit runtime selection upstream and remove the browser mode subclass.
-3. Add SQLite + IDBFS; test full-page reload persistence without mistaking in-memory worker reuse for persistence.
-4. Add editor and dynamic bundling on top of the now-proven library integration.
+1. Add explicit runtime selection upstream and remove the browser mode subclass.
+2. Add SQLite + IDBFS; test full-page reload persistence without mistaking in-memory worker reuse for persistence.
+3. Add editor and dynamic bundling on top of the now-proven library integration.
