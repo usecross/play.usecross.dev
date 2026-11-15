@@ -95,23 +95,32 @@ async function initPythonWorker() {
   });
 }
 
-// Handle messages from Service Worker via BroadcastChannel
-const pythonChannel = new BroadcastChannel('python-bridge');
+// The Service Worker broadcasts every preview request to all shell tabs and
+// takes the first answer, so exactly one tab may run Python and answer.
+const RUNTIME_LOCK = 'play.usecross.dev:python-runtime';
 
-pythonChannel.addEventListener('message', async (event) => {
-  if (event.data.type === 'python-request') {
+/** Resolve once this tab owns the runtime; hold the lock until the tab closes. */
+function acquireRuntime(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const hold = () => {
+      resolve();
+      return new Promise<never>(() => {});
+    };
+    navigator.locks.request(RUNTIME_LOCK, { ifAvailable: true }, lock => {
+      if (lock) return hold();
+      updateStatus('The playground is open in another tab. Close it to run here.');
+      navigator.locks.request(RUNTIME_LOCK, hold).catch(reject);
+    }).catch(reject);
+  });
+}
+
+// Answer Service Worker requests only after this tab's Python app is ready.
+function answerPreviewRequests(worker: Worker) {
+  const pythonChannel = new BroadcastChannel('python-bridge');
+  pythonChannel.addEventListener('message', (event) => {
+    if (event.data.type !== 'python-request') return;
     const { requestId, request } = event.data;
-    
-    if (!pythonWorker) {
-      // Send error back
-      pythonChannel.postMessage({
-        type: 'python-response',
-        requestId,
-        error: 'Python worker not initialized',
-      });
-      return;
-    }
-    
+
     // Forward to Python worker
     const channel = new MessageChannel();
     
@@ -127,19 +136,20 @@ pythonChannel.addEventListener('message', async (event) => {
       }
     };
     
-    pythonWorker.postMessage(
+    worker.postMessage(
       {
         type: 'http-request',
         request,
       },
       [channel.port2]
     );
-  }
-});
+  });
+}
 
 // Initialize the runner (Service Worker + Pyodide)
 async function initialize() {
   try {
+    await acquireRuntime();
     updateStatus('Registering Service Worker...');
     
     // Register the Service Worker from /sw.js (proper scope)
@@ -175,6 +185,7 @@ async function initialize() {
     
     // Initialize Python worker
     await initPythonWorker();
+    answerPreviewRequests(pythonWorker!);
     
     // Keep the frame blank until BOTH the SW and Python app are ready.
     previewFrame.src = '/preview/';

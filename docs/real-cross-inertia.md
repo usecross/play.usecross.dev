@@ -23,6 +23,7 @@ When PR #146 is released, replace this temporary source-wheel preparation with a
 - The starter serves fixed ESM/CSS from the VFS. React and Inertia remain external, pinned imports; dynamic bundling is a separate milestone.
 - The fake CrossInertia installation fallback is removed. Wheel/import/template/manifest failures stop initialization and surface the actual error in the shell.
 - The preview stays blank and its reload button disabled until initialization succeeds.
+- Only one tab runs Python at a time (a Web Lock). The Service Worker broadcasts preview requests to every shell tab and uses the first answer, so other tabs wait with an "open in another tab" status and take over when the active tab closes.
 - The bridge preserves the full browser URL and sets ASGI `root_path=/preview`. The router matches `/counter`, while redirects and Inertia page URLs retain `/preview/counter`.
 
 ## Browser-specific integration

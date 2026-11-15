@@ -88,6 +88,35 @@ test('counter mutations and preview reload stay inside the ASGI mount', async ({
   await expect(counter).toHaveText('0'); // Persistence is explicitly not implemented yet.
 });
 
+test('a second tab waits instead of sharing or answering for the active runtime', async ({ page, context }) => {
+  await ready(page);
+  const frame = page.frameLocator('#preview');
+  const counter = frame.getByRole('status', { name: 'Counter value' });
+  await frame.getByRole('button', { name: '+', exact: true }).click();
+  await expect(counter).toHaveText('1');
+
+  const second = await context.newPage();
+  await second.goto('/');
+  await expect(second.locator('#status')).toContainText('open in another tab');
+  await expect(second.locator('#preview')).toHaveAttribute('src', 'about:blank');
+  await expect(second.getByRole('button', { name: 'Reload Preview' })).toBeDisabled();
+
+  // Every preview request is still answered by the first tab's Python state.
+  const counts = await page.evaluate(async () => {
+    const counts = [];
+    for (let i = 0; i < 8; i++) counts.push((await (await fetch('/preview/health')).json()).counter);
+    return counts;
+  });
+  expect(counts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+  await frame.getByRole('button', { name: '+', exact: true }).click();
+  await expect(counter).toHaveText('2');
+
+  // Closing the active tab hands the runtime to the waiting one, with fresh state.
+  await page.close();
+  await expect(second.locator('#status')).toHaveText('Ready', { timeout: 120_000 });
+  await expect(second.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('0');
+});
+
 test('published protocol handles partial reloads, version conflicts and validation', async ({ page }) => {
   await ready(page);
   const result = await page.evaluate(async () => {
