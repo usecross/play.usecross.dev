@@ -4,6 +4,10 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
+    "types": ["vite/client"],
+    "paths": {
+      "@play.usecross.dev/runner/*": ["../../packages/runner/*"]
+    },
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
@@ -12,8 +16,5 @@
     "esModuleInterop": true,
     "isolatedModules": true
   },
-  "include": ["src/**/*"],
-  "references": [
-    { "path": "../../packages/runner" }
-  ]
+  "include": ["src/**/*"]
 }

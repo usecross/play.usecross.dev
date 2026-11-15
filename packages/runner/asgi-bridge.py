@@ -47,7 +47,7 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
         'scheme': parsed.scheme or 'http',
         'path': path,
         'query_string': query_string,
-        'root_path': '',
+        'root_path': request_data.get('rootPath', ''),
         'headers': _build_asgi_headers(headers),
         'server': tuple([parsed.hostname or 'localhost', parsed.port or default_port]),
     }

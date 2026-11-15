@@ -1,10 +1,9 @@
 /**
  * CrossInertia Playground Shell
- * Phase 0: Service Worker registration and preview setup
+ * Registers the Service Worker, starts Python and sets up the preview.
  */
 
 import { counterFiles } from '@play.usecross.dev/runner/counter-files';
-import type { HttpRequest, HttpResponse } from '@play.usecross.dev/runner/types';
 
 // Status display
 const statusEl = document.getElementById('status') as HTMLElement;
@@ -74,7 +73,7 @@ async function initPythonWorker() {
             updateStatus('Ready');
             resolve();
           } else {
-            reject(new Error('Python initialization failed'));
+            reject(new Error(event.data.error || 'Python initialization failed'));
           }
         }
       } else if (event.data.type === 'error') {
@@ -96,23 +95,32 @@ async function initPythonWorker() {
   });
 }
 
-// Handle messages from Service Worker via BroadcastChannel
-const pythonChannel = new BroadcastChannel('python-bridge');
+// The Service Worker broadcasts every preview request to all shell tabs and
+// takes the first answer, so exactly one tab may run Python and answer.
+const RUNTIME_LOCK = 'play.usecross.dev:python-runtime';
 
-pythonChannel.addEventListener('message', async (event) => {
-  if (event.data.type === 'python-request') {
+/** Resolve once this tab owns the runtime; hold the lock until the tab closes. */
+function acquireRuntime(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const hold = () => {
+      resolve();
+      return new Promise<never>(() => {});
+    };
+    navigator.locks.request(RUNTIME_LOCK, { ifAvailable: true }, lock => {
+      if (lock) return hold();
+      updateStatus('The playground is open in another tab. Close it to run here.');
+      navigator.locks.request(RUNTIME_LOCK, hold).catch(reject);
+    }).catch(reject);
+  });
+}
+
+// Answer Service Worker requests only after this tab's Python app is ready.
+function answerPreviewRequests(worker: Worker) {
+  const pythonChannel = new BroadcastChannel('python-bridge');
+  pythonChannel.addEventListener('message', (event) => {
+    if (event.data.type !== 'python-request') return;
     const { requestId, request } = event.data;
-    
-    if (!pythonWorker) {
-      // Send error back
-      pythonChannel.postMessage({
-        type: 'python-response',
-        requestId,
-        error: 'Python worker not initialized',
-      });
-      return;
-    }
-    
+
     // Forward to Python worker
     const channel = new MessageChannel();
     
@@ -128,19 +136,20 @@ pythonChannel.addEventListener('message', async (event) => {
       }
     };
     
-    pythonWorker.postMessage(
+    worker.postMessage(
       {
         type: 'http-request',
         request,
       },
       [channel.port2]
     );
-  }
-});
+  });
+}
 
 // Initialize the runner (Service Worker + Pyodide)
 async function initialize() {
   try {
+    await acquireRuntime();
     updateStatus('Registering Service Worker...');
     
     // Register the Service Worker from /sw.js (proper scope)
@@ -155,32 +164,35 @@ async function initialize() {
       type: 'module',
     });
 
-    // Wait for the service worker to be active
-    if (registration.active) {
-      updateStatus('Service Worker registered');
-      console.log('[Shell] Service Worker ready:', registration);
-    } else {
-      await new Promise<void>((resolve) => {
-        const worker = registration.installing || registration.waiting;
-        if (worker) {
-          worker.addEventListener('statechange', () => {
-            if (worker.state === 'activated') {
-              updateStatus('Service Worker registered');
-              console.log('[Shell] Service Worker ready:', registration);
-              resolve();
-            }
-          });
-        }
+    await navigator.serviceWorker.ready;
+    // Activation precedes clients.claim(). Do not navigate the preview until
+    // this page is controlled, or its first request can hit the static host.
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((resolve, reject) => {
+        const onControllerChange = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        const timeout = setTimeout(() => {
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+          reject(new Error('Service Worker did not take control'));
+        }, 10000);
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange, { once: true });
       });
     }
+    updateStatus('Service Worker registered');
+    console.log('[Shell] Service Worker ready:', registration);
     
     // Initialize Python worker
     await initPythonWorker();
+    answerPreviewRequests(pythonWorker!);
     
-    // Service Worker is now active and will intercept requests to /preview/
-    // Reload the preview iframe so the first load is intercepted by the active SW
-    previewFrame.contentWindow?.location.reload();
+    // Keep the frame blank until BOTH the SW and Python app are ready.
+    previewFrame.src = '/preview/';
+    reloadBtn.disabled = false;
   } catch (error) {
+    pythonWorker?.terminate();
+    pythonWorker = null;
     console.error('[Shell] Failed to initialize:', error);
     updateStatus('Failed to initialize: ' + (error as Error).message);
   }
@@ -188,7 +200,7 @@ async function initialize() {
 
 // Reload button
 reloadBtn.addEventListener('click', () => {
-  previewFrame.contentWindow?.location.reload();
+  previewFrame.src = '/preview/';
 });
 
 // Listen for preview messages

@@ -107,7 +107,8 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
   try {
     const url = new URL(request.url);
     
-    // Strip /preview prefix for the Python app
+    // Cookies are scoped to the Python app; ASGI receives the full URL plus
+    // root_path so redirects, request URLs and Inertia page URLs keep /preview.
     const appPath = url.pathname.replace(/^\/preview/, '') || '/';
     const appUrl = url.origin + appPath + url.search + url.hash;
     
@@ -134,7 +135,8 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     // Create HTTP request for Python
     const httpRequest: HttpRequest = {
       method: request.method,
-      url: appUrl,
+      url: url.href,
+      rootPath: '/preview',
       headers: requestHeaders,
       body,
     };
@@ -160,7 +162,7 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
       responseHeaders.append(key, value);
     });
     
-    return new Response(response.body, {
+    return new Response(response.body ? new Uint8Array(response.body).buffer : null, {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
