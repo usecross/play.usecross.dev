@@ -23,11 +23,11 @@ See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraint
 - SQLite persisted in IndexedDB: the count survives a full page reload and closing the tab
 - One tab runs Python at a time; another tab waits and takes over with the saved data
 - Editing `app.py`, the template and the React frontend (`app.tsx`, `app.css`): frontend edits are bundled in the browser with esbuild-wasm, and a new bundle changes the Inertia asset version
+- Editing dependencies in `pyproject.toml`: **Restart Python** installs them in a new worker while the old one keeps serving, then switches with the data kept; a failed install leaves the old one running
 - Edits are saved in the browser and restored on reload; **Reset to starter** discards them and **Clear data** empties the database, each without touching the other
 
 ### Not implemented yet
 
-- Editing `pyproject.toml`
 - npm packages beyond the template's import map (React, React DOM and Inertia from pinned CDN URLs); runtime errors in the preview aren't shown in the shell yet
 - Django/WSGI, SSR, WebSockets/SSE, or cross-origin runner isolation
 - Async prop callbacks that need an event loop/thread bridge; this milestone uses plain props
@@ -144,8 +144,7 @@ PLAYWRIGHT_BASE_URL=https://play.usecross.dev bun run test
 ## Scope and roadmap
 
 1. Add an explicit upstream runtime-mode option, then remove the browser mode subclass.
-2. Add dependency edits (see the editor milestone plan).
-3. Expand framework support and harden runner isolation.
+2. Expand framework support and harden runner isolation.
 
 Cross-Auth playgrounds are outside this repository's current scope.
 
