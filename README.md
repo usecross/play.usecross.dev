@@ -54,8 +54,8 @@ Open http://localhost:3000. The preview stays blank until the Service Worker con
 ```bash
 bun run typecheck
 bun run test:python       # Python 3.12; uv installs it if needed
-bun run test:install      # First time: install Playwright Chromium
-bun run test             # Vite development server
+bun run test:install      # First time: install Playwright Chromium and WebKit
+bun run test             # Vite development server, in Chromium and WebKit
 bun run test:production  # Built assets on Wrangler's local runtime
 ```
 
@@ -74,7 +74,7 @@ Tests verify:
 - Mount-prefix preservation, partial reload filtering, version conflicts, and invalid input
 - A failed wheel download produces a visible error and never a fake successful preview
 
-CI runs the native regression test and both browser configurations.
+CI runs the native regression test and both browser configurations. Tests that intercept requests from a Web Worker (wheel and esbuild downloads) run only in Chromium, because Playwright's WebKit can't intercept them. Firefox isn't in CI yet: the playground works there, but Playwright's Firefox driver intermittently loses the preview iframe after it reloads.
 
 ## Project structure
 

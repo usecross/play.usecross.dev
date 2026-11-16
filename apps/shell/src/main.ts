@@ -170,10 +170,13 @@ async function initialize() {
       type: 'module',
     });
 
-    await navigator.serviceWorker.ready;
+    const active = (await navigator.serviceWorker.ready).active!;
     // Activation precedes clients.claim(). Do not navigate the preview until
     // this page is controlled, or its first request can hit the static host.
     if (!navigator.serviceWorker.controller) {
+      // A hard reload skips the Service Worker, which then never claims the
+      // page by itself because it is already active. Ask it to.
+      active.postMessage({ type: 'claim' });
       await new Promise<void>((resolve, reject) => {
         const onControllerChange = () => {
           clearTimeout(timeout);

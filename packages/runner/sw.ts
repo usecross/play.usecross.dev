@@ -104,6 +104,11 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
+// A page that isn't controlled, such as after a hard reload, asks to be claimed.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'claim') event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   

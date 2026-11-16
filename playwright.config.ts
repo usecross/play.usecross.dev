@@ -28,6 +28,10 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], channel: process.env.PLAYWRIGHT_CHANNEL || undefined },
     },
+    // Firefox works, but Playwright's Firefox driver intermittently loses the
+    // preview iframe after a reload (its frame stops answering evaluate()
+    // while real clicks still work), so it isn't run here yet.
+    { name: 'webkit', use: devices['Desktop Safari'] },
   ],
 
   webServer: process.env.PLAYWRIGHT_BASE_URL ? undefined : {

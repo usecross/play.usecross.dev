@@ -279,7 +279,8 @@ test('errors in the running preview show in the shell', async ({ page }) => {
   expect(await page.evaluate(() => (document.querySelector('#preview') as HTMLIFrameElement).contentDocument!.compatMode)).toBe('CSS1Compat');
 });
 
-test('frontend applies retry a failed esbuild load and land in order', async ({ page }) => {
+test('frontend applies retry a failed esbuild load and land in order', async ({ page, browserName }) => {
+  test.skip(browserName === 'webkit', "Playwright's WebKit can't intercept a Web Worker's requests");
   page.on('dialog', dialog => dialog.accept());
   // The first esbuild download fails; the next one is slow.
   let downloads = 0;
@@ -310,7 +311,8 @@ test('frontend applies retry a failed esbuild load and land in order', async ({ 
   await expect(page.getByRole('alert')).toBeHidden();
 });
 
-test('dependency edits install by restarting Python, without losing data', async ({ page, context }) => {
+test('dependency edits install by restarting Python, without losing data', async ({ page, context, browserName }) => {
+  test.skip(browserName === 'webkit', "Playwright's WebKit can't intercept a Web Worker's requests");
   page.on('dialog', dialog => dialog.accept());
   // Slow down the new package, so the new worker has loaded /data well before it is ready.
   let wheelRequested!: () => void;
@@ -548,7 +550,18 @@ test('published protocol handles partial reloads, version conflicts and validati
   expect(result.missingStatus).toBe(404);
 });
 
-test('a failed real wheel download fails visibly instead of substituting a stub', async ({ page, context }) => {
+test('a hard reload, which skips the Service Worker, still starts the playground', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'A cache-bypassing reload needs the Chrome DevTools Protocol');
+  await ready(page);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Page.reload', { ignoreCache: true });
+  await expect(page.locator('#status')).toHaveText(/^(Ready|Failed to initialize:.*)$/s, { timeout: 120_000 });
+  await expect(page.locator('#status')).toHaveText('Ready');
+  await expect(page.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('0');
+});
+
+test('a failed real wheel download fails visibly instead of substituting a stub', async ({ page, context, browserName }) => {
+  test.skip(browserName === 'webkit', "Playwright's WebKit can't intercept a Web Worker's requests");
   // A network failure: micropip ignores HTTP status, so an error page would
   // fail PyPI's checksum check instead, with a less specific message.
   await context.route('**/cross_inertia-*.whl', route => route.abort('failed'));
