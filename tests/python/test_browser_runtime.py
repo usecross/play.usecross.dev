@@ -48,13 +48,16 @@ class BrowserRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
             scope["headers"] = [(b"host", b"play.example")]
             html = await get_counter(Request(scope))
+            # scripts/test-python.ts builds the frontend first, as `vite build` would.
+            manifest = json.loads((ROOT / "examples/counter/static/build/.vite/manifest.json").read_text())
+            entry = manifest["frontend/app.tsx"]
             self.assertIn(b'script data-page="app"', html.body)
-            self.assertIn(b'/preview/static/build/assets/app.js', html.body)
-            self.assertIn(b'/preview/static/build/assets/app.css', html.body)
+            self.assertIn(f'/preview/static/build/{entry["file"]}'.encode(), html.body)
+            self.assertIn(f'/preview/static/build/{entry["css"][0]}'.encode(), html.body)
 
             # Asset URLs follow the mount; the starter itself has no /preview.
             root = await get_counter(Request({**scope, "path": "/counter", "root_path": ""}))
-            self.assertIn(b'src="/static/build/assets/app.js"', root.body)
+            self.assertIn(f'src="/static/build/{entry["file"]}"'.encode(), root.body)
             self.assertNotIn(b"/preview", root.body)
             threads.assert_not_called()
             probe.assert_not_called()

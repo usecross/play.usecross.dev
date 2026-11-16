@@ -3,7 +3,7 @@
  * Registers the Service Worker, starts Python and sets up the preview.
  */
 
-import { STARTER_DIR, counterFiles, counterSources, editableSources } from '@play.usecross.dev/runner/counter-files';
+import { STARTER_DIR, counterFiles, counterSources, editableSources, starterBuildFiles } from '@play.usecross.dev/runner/counter-files';
 
 // Status display
 const statusEl = document.getElementById('status') as HTMLElement;
@@ -261,13 +261,13 @@ function saveEdit(path: string, content: string) {
 const vfsPaths = (files: Record<string, string>) =>
   Object.fromEntries(Object.entries(files).map(([path, content]) => [`${STARTER_DIR}/${path}`, content]));
 
-/** Send a message to the Python worker and wait for its 'applied' answer. */
+/** Send a message to the Python worker and wait for its answer: the error, or null. */
 function sendToPython(message: object): Promise<string | null> {
   return new Promise((resolve, reject) => {
     if (!pythonWorker) return reject(new Error('Python worker not initialized'));
     const channel = new MessageChannel();
     channel.port1.onmessage = ({ data }) => {
-      if (data.type === 'applied') resolve(data.error);
+      if (data.type === 'applied' || data.type === 'error') resolve(data.error);
     };
     pythonWorker.postMessage(message, [channel.port2]);
   });
@@ -290,45 +290,68 @@ function showResult(error: string | null, success: string | null) {
   }
 }
 
+/** The editable files as the editor has them: the starter, with saved edits over it. */
+function currentFiles(): Record<string, string> {
+  const saved = loadEdits()?.files ?? {};
+  return Object.fromEntries(editableSources.map(path => [path, saved[path] ?? counterSources[path]]));
+}
+
+/**
+ * Apply every editable file. Python gets the frontend's build, not its
+ * sources: the starter's own build when the frontend is unchanged, otherwise
+ * a new bundle. Returns the error, or null.
+ */
+async function applyFiles(files: Record<string, string>): Promise<string | null> {
+  const frontend = Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith('frontend/')));
+  const python = Object.fromEntries(Object.entries(files).filter(([path]) => !(path in frontend)));
+  let build = starterBuildFiles;
+  if (Object.entries(frontend).some(([path, content]) => content !== counterSources[path])) {
+    try {
+      // esbuild-wasm loads in its own chunk, on the first frontend edit.
+      build = (await (await import('@play.usecross.dev/bundler/browser.ts')).bundle(frontend)).files;
+    } catch (error) {
+      return (error as Error).message;
+    }
+  }
+  return sendToPython({ type: 'apply-files', files: vfsPaths({ ...python, ...build }) });
+}
+
 async function restoreSavedEdits() {
   const saved = loadEdits();
   if (!saved) return;
-  const files = Object.fromEntries(Object.entries(saved.files).filter(([path]) => editableSources.includes(path)));
-  (await editor)?.setFiles(files);
+  (await editor)?.setFiles(currentFiles());
   starterChangedEl.hidden = saved.starter === starterFingerprint;
-  showResult(await sendToPython({ type: 'apply-files', files: vfsPaths(files) }), null);
+  showResult(await applyFiles(currentFiles()), null);
 }
 
-// Edits waiting to be applied, by starter path.
-let pendingEdits: Record<string, string> = {};
+// Whether there are edits the preview doesn't run yet.
+let editsPending = false;
 let applyTimer: ReturnType<typeof setTimeout> | undefined;
 
 function editChanged(path: string, content: string) {
   saveEdit(path, content);
-  pendingEdits[path] = content;
+  editsPending = true;
   clearTimeout(applyTimer);
   applyTimer = setTimeout(applyEdits, 800);
 }
 
 async function applyEdits() {
   clearTimeout(applyTimer);
-  const files = pendingEdits;
-  if (!pythonWorker || Object.keys(files).length === 0) return;
-  pendingEdits = {};
+  if (!pythonWorker || !editsPending) return;
+  editsPending = false;
   updateStatus('Applying your changes...');
-  showResult(await sendToPython({ type: 'apply-files', files: vfsPaths(files) }), 'Changes applied');
+  showResult(await applyFiles(currentFiles()), 'Changes applied');
 }
 
 resetStarterBtn.addEventListener('click', async () => {
   if (!confirm('Discard your edits and restore the starter files? The app\'s data is kept.')) return;
   clearTimeout(applyTimer);
-  pendingEdits = {};
+  editsPending = false;
   localStorage.removeItem(SAVED_EDITS);
   starterChangedEl.hidden = true;
   (await editor)?.setFiles(counterSources);
-  const files = Object.fromEntries(editableSources.map(path => [path, counterSources[path]]));
   updateStatus('Restoring the starter...');
-  showResult(await sendToPython({ type: 'apply-files', files: vfsPaths(files) }), 'Starter files restored');
+  showResult(await applyFiles(currentFiles()), 'Starter files restored');
 });
 
 clearDataBtn.addEventListener('click', async () => {

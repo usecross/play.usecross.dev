@@ -34,8 +34,9 @@ Browser Service Worker
 ```
 
 The Python VFS includes `/asgi_bridge.py`, `/browser_inertia.py`, and the
-counter app/template/manifest/ESM/CSS files under `/examples/counter/`.
-Those contents come from the actual repository files through raw imports.
+counter app, template and frontend build under `/examples/counter/`.
+Those contents come from the actual repository files through raw imports; the
+frontend build comes from esbuild (see [CrossInertia Integration](#crossinertia-integration)).
 
 ## Request Flow (Counter Example)
 
@@ -48,7 +49,7 @@ Those contents come from the actual repository files through raw imports.
 5. The ASGI scope retains `path=/preview/counter` and `root_path=/preview`. FastAPI matches the unprefixed `/counter` route.
 6. The route calls `get_inertia(request, response).render("Counter", {"count": read_count()})`, reading the count from SQLite.
 7. CrossInertia reads the VFS manifest and renders the real Jinja `inertia_head()` / `inertia_body()` helpers.
-8. Its template-generated `/preview/static/build/assets/app.js` and `app.css` requests travel through the same bridge and are served from the VFS.
+8. Its template-generated `/preview/static/build/assets/app-[hash].js` and `.css` requests travel through the same bridge and are served from the VFS.
 
 ### Form submission
 
@@ -184,9 +185,27 @@ const cookieHeader = cookieJar.getCookieHeader('http://localhost/counter');
 ## CrossInertia Integration
 
 The counter uses the real `cross_inertia.fastapi` renderer. Its Vite-shaped
-manifest maps `frontend/app.js` to `assets/app.js` and `assets/app.css`.
-The fixed ESM/CSS sources are mapped into the VFS; React/Inertia use pinned CDN
-imports. Dynamic esbuild-wasm compilation is not implemented yet.
+manifest maps `frontend/app.tsx` to hashed `assets/app-[hash].js` and `.css`
+files. `bundleFrontend` in `packages/bundler` builds them with esbuild:
+
+- It bundles `frontend/app.tsx` and the files it imports, such as `app.css`,
+  from an in-memory map of sources, with the automatic JSX runtime.
+- Package imports (`react`, `react/jsx-runtime`, `react-dom/client`,
+  `@inertiajs/react`) stay external; the template's import map loads them from
+  pinned CDN URLs. Other packages aren't available yet.
+- It writes the manifest Vite would, so CrossInertia reads it unchanged. The
+  asset version is an MD5 of the manifest, so a new bundle changes it, and an
+  Inertia visit from an old page gets a 409 and reloads.
+
+The same function runs twice. At deploy time, the shell's Vite plugin
+(`virtual:starter-build`) bundles the starter with esbuild-wasm in Node, so a
+first visit downloads no esbuild. After a frontend edit, the shell loads
+esbuild-wasm (`packages/bundler/browser.ts`, in its own chunk and Web Worker),
+bundles the edited files, and sends the output to Python with `apply-files`.
+When the frontend matches the starter again, it sends the starter's own build.
+Bundle errors show esbuild's message, with file, line and a code frame, and
+the last working bundle keeps serving. Every apply sends all editable files,
+so the preview always runs what the editor shows.
 
 `BrowserInertiaResponse` inherits rendering unchanged and only forces
 production-mode detection, provides an explicit Vite URL to avoid port scans,
@@ -451,8 +470,8 @@ setTimeout(() => {
 ✅ React + Inertia.js client  
 
 ### What Doesn't Work Yet
-❌ Real asset bundling (CDN/inline only)  
-❌ Editing the frontend and `pyproject.toml`  
+❌ npm packages beyond the template's import map  
+❌ Editing `pyproject.toml`  
 ❌ WSGI/Django  
 ❌ WebSocket/SSE  
 ❌ File uploads  
@@ -583,7 +602,7 @@ HTTP-only check of the shell would not exercise the ASGI bridge.
 - [x] Editing `app.py` and the template, with a Python reload that keeps `/data`
 - [x] Saving edits in the browser, Reset to starter, and Clear data
 - [x] IDBFS for SQLite persistence
-- [ ] esbuild-wasm for React bundling
+- [x] esbuild-wasm for React bundling
 - [x] Hot reload for Python code changes
 
 ### Phase 2: Django

@@ -1,12 +1,23 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import * as esbuild from 'esbuild-wasm';
+import { bundleFrontend } from '../packages/bundler/index.ts';
 
 const crossInertiaVersion = readFileSync('examples/counter/pyproject.toml', 'utf8')
   .match(/"cross-inertia==([^"]+)"/)![1];
 
 const starterApp = readFileSync('examples/counter/app.py', 'utf8');
 const starterTemplate = readFileSync('examples/counter/templates/app.html', 'utf8');
+const starterTsx = readFileSync('examples/counter/frontend/app.tsx', 'utf8');
+const starterCss = readFileSync('examples/counter/frontend/app.css', 'utf8');
+/** The starter's frontend, bundled here in Node as the deploy does. */
+const starterBuild = () => bundleFrontend(esbuild, Object.fromEntries(readdirSync('examples/counter/frontend')
+  .map(name => [`frontend/${name}`, readFileSync(`examples/counter/frontend/${name}`, 'utf8')])));
+/** The Inertia asset version of the page in the preview. */
+const previewVersion = (page: Page) => page.evaluate(() => JSON.parse(
+  (document.querySelector('#preview') as HTMLIFrameElement).contentDocument!.querySelector('script[data-page]')!.textContent!,
+).version);
 const editorCode = (page: Page) => page.getByRole('tabpanel').locator('.cm-content');
 
 /** Replace a starter file's contents in the editor, as typing would. */
@@ -62,8 +73,9 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
   expect(result.initialPage).toMatchObject({
     component: 'Counter', props: { count: 0, errors: {} }, url: '/preview/counter',
   });
-  // CrossInertia computes this from its real manifest, not the old hardcoded "1".
-  const manifest = JSON.parse(readFileSync('examples/counter/static/build/.vite/manifest.json', 'utf8'));
+  // CrossInertia computes this from its real manifest, which esbuild generates at build time.
+  const { manifest } = await starterBuild();
+  const entry = manifest['frontend/app.tsx'];
   const pythonJson = (value: unknown): string => {
     if (Array.isArray(value)) return '[' + value.map(pythonJson).join(', ') + ']';
     if (value && typeof value === 'object') return '{' + Object.entries(value).sort(([a], [b]) => a.localeCompare(b))
@@ -71,8 +83,9 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
     return JSON.stringify(value);
   };
   expect(result.initialPage.version).toBe(createHash('md5').update(pythonJson(manifest)).digest('hex'));
-  expect(result.script).toBe('/preview/static/build/assets/app.js');
-  expect(result.stylesheet).toBe('/preview/static/build/assets/app.css');
+  expect(result.script).toBe(`/preview/static/build/${entry.file}`);
+  expect(result.stylesheet).toBe(`/preview/static/build/${entry.css![0]}`);
+  expect(result.script).toMatch(/\/assets\/app-\w+\.js$/);
   expect(result.js.status).toBe(200);
   expect(result.js.type).toMatch(/javascript/);
   expect(result.js.text).toContain('createInertiaApp');
@@ -85,7 +98,7 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
 test('the editor shows the starter files that run in Python', async ({ page }) => {
   await page.goto('/');
   const tabs = page.getByRole('tab');
-  await expect(tabs).toHaveText(['app.py', 'templates/app.html', 'frontend/app.js', 'frontend/app.css', 'pyproject.toml']);
+  await expect(tabs).toHaveText(['app.py', 'templates/app.html', 'frontend/app.tsx', 'frontend/app.css', 'pyproject.toml']);
   await expect(page.getByRole('tab', { selected: true })).toHaveText('app.py');
   const code = page.getByRole('tabpanel').locator('.cm-content');
   await expect(code).toContainText('def read_count()');
@@ -109,11 +122,11 @@ test('edits to app.py and the template apply without losing data', async ({ page
   await plus.click();
   await expect(counter).toHaveText('1');
 
-  // The frontend is read-only until bundling lands.
-  await page.getByRole('tab', { name: 'frontend/app.js' }).click();
+  // Dependencies are read-only until dependency edits land.
+  await page.getByRole('tab', { name: 'pyproject.toml' }).click();
   await code.click();
-  await page.keyboard.type('// edited');
-  await expect(code).not.toContainText('// edited');
+  await page.keyboard.type('# edited');
+  await expect(code).not.toContainText('# edited');
 
   // A Python edit applies after a pause; the count in SQLite survives it.
   const app = readFileSync('examples/counter/app.py', 'utf8');
@@ -137,27 +150,84 @@ test('edits to app.py and the template apply without losing data', async ({ page
   await page.keyboard.press('ControlOrMeta+s');
   await expect(page.getByRole('alert')).toBeHidden();
 
-  // A broken template is rolled back on disk too, so a later app.py edit still
-  // builds on the last working template.
+  // A broken template is rolled back on disk too. The preview runs what the
+  // editor shows, so a later app.py edit waits for the template to be fixed.
   const template = readFileSync('examples/counter/templates/app.html', 'utf8');
   await replaceFile(page, 'templates/app.html', template.replace('{{ inertia_body() }}', '{{ inertia_body( }}'));
   await page.keyboard.press('ControlOrMeta+s');
   await expect(page.getByRole('alert')).toContainText('TemplateSyntaxError');
   await page.getByRole('button', { name: 'Reload Preview' }).click();
   await expect(counter).toHaveText('21');
-  await replaceFile(page, 'app.py', app + '\n# edited after a broken template\n');
+  await replaceFile(page, 'app.py', app.replace('value = value + 1', 'value = value + 2'));
   await page.keyboard.press('ControlOrMeta+s');
-  await expect(page.locator('#status')).toHaveText('Changes applied');
-  await expect(page.getByRole('alert')).toBeHidden();
+  await expect(page.getByRole('alert')).toContainText('TemplateSyntaxError');
+  await expect(page.locator('#status')).toHaveText('Not applied: the previous version is still running');
+  await page.getByRole('button', { name: 'Reload Preview' }).click();
+  await plus.click();
+  await expect(counter).toHaveText('22');
 
-  // Template edits apply the same way as Python ones.
+  // Template edits apply the same way as Python ones; fixing it applies both.
   await replaceFile(page, 'templates/app.html', template.replace('<title>Counter - CrossInertia Playground</title>', '<title>Edited title</title>'));
   await page.keyboard.press('ControlOrMeta+s');
   await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(page.getByRole('alert')).toBeHidden();
   await expect.poll(() => page.evaluate(() => (document.querySelector('#preview') as HTMLIFrameElement).contentDocument?.title))
     .toBe('Edited title');
   await plus.click();
-  await expect(counter).toHaveText('22');
+  await expect(counter).toHaveText('24');
+});
+
+test('frontend edits are bundled in the browser and keep data', async ({ page }) => {
+  page.on('dialog', dialog => dialog.accept());
+  await ready(page);
+  const frame = page.frameLocator('#preview');
+  const counter = frame.getByRole('status', { name: 'Counter value' });
+  const heading = frame.getByRole('heading', { level: 1 });
+  await frame.getByRole('button', { name: '+', exact: true }).click();
+  await expect(counter).toHaveText('1');
+  const starterVersion = await previewVersion(page);
+
+  // A TSX edit is bundled with esbuild-wasm and replaces the starter's build.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>My counter</h1>'));
+  await expect(page.locator('#status')).toHaveText('Changes applied', { timeout: 30_000 });
+  await expect(heading).toHaveText('My counter');
+  await expect(counter).toHaveText('1');
+  // The new manifest changes the asset version, so an Inertia visit from the old page gets a 409.
+  const editedVersion = await previewVersion(page);
+  expect(editedVersion).not.toBe(starterVersion);
+  expect(await page.evaluate(version => fetch('/preview/counter', {
+    headers: { 'X-Inertia': 'true', 'X-Inertia-Version': version },
+  }).then(response => response.status), starterVersion)).toBe(409);
+
+  // CSS edits are bundled too.
+  await replaceFile(page, 'frontend/app.css', starterCss + '\nh1 { color: rgb(200, 0, 0); }\n');
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(heading).toHaveCSS('color', 'rgb(200, 0, 0)');
+
+  // A bundle error names the file and line; the last good bundle keeps serving.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>Broken</h2>'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toContainText(/frontend\/app\.tsx:\d+:\d+/);
+  await expect(page.getByRole('alert')).toContainText('Unexpected closing "h2" tag');
+  await expect(page.locator('#status')).toHaveText('Not applied: the previous version is still running');
+  await page.getByRole('button', { name: 'Reload Preview' }).click();
+  await expect(heading).toHaveText('My counter');
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>My counter</h1>'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toBeHidden();
+
+  // A reload bundles the saved edits again before the preview loads.
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Ready', { timeout: 120_000 });
+  await expect(heading).toHaveText('My counter');
+  await expect(heading).toHaveCSS('color', 'rgb(200, 0, 0)');
+
+  // Reset to starter goes back to the starter's own build.
+  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await expect(page.locator('#status')).toHaveText('Starter files restored');
+  await expect(heading).toHaveText('Counter');
+  expect(await previewVersion(page)).toBe(starterVersion);
+  await expect(counter).toHaveText('1');
 });
 
 test('edits are saved across reloads; reset and clear data are separate', async ({ page }) => {
