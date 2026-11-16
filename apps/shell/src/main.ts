@@ -296,12 +296,22 @@ function currentFiles(): Record<string, string> {
   return Object.fromEntries(editableSources.map(path => [path, saved[path] ?? counterSources[path]]));
 }
 
+// Applies run one at a time, in order, so a slow bundle can't land after a
+// later apply, such as a Reset to starter.
+let lastApply: Promise<unknown> = Promise.resolve();
+
 /**
  * Apply every editable file. Python gets the frontend's build, not its
  * sources: the starter's own build when the frontend is unchanged, otherwise
  * a new bundle. Returns the error, or null.
  */
-async function applyFiles(files: Record<string, string>): Promise<string | null> {
+function applyFiles(files: Record<string, string>): Promise<string | null> {
+  const apply = lastApply.then(() => bundleAndSend(files));
+  lastApply = apply.catch(() => {});
+  return apply;
+}
+
+async function bundleAndSend(files: Record<string, string>): Promise<string | null> {
   const frontend = Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith('frontend/')));
   const python = Object.fromEntries(Object.entries(files).filter(([path]) => !(path in frontend)));
   let build = starterBuildFiles;

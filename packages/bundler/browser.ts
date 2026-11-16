@@ -7,9 +7,14 @@ import * as esbuild from 'esbuild-wasm';
 import wasmURL from 'esbuild-wasm/esbuild.wasm?url';
 import { bundleFrontend } from './index.ts';
 
-const ready = esbuild.initialize({ wasmURL, worker: true });
+let ready: Promise<void> | undefined;
 
 export async function bundle(sources: Record<string, string>) {
+  // A failed load, such as a network error, is retried on the next bundle.
+  ready ??= esbuild.initialize({ wasmURL, worker: true }).catch(error => {
+    ready = undefined;
+    throw error;
+  });
   await ready;
   return bundleFrontend(esbuild, sources);
 }

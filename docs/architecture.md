@@ -205,7 +205,9 @@ bundles the edited files, and sends the output to Python with `apply-files`.
 When the frontend matches the starter again, it sends the starter's own build.
 Bundle errors show esbuild's message, with file, line and a code frame, and
 the last working bundle keeps serving. Every apply sends all editable files,
-so the preview always runs what the editor shows.
+and applies run one at a time in order, so a slow bundle can't land after a
+later edit or reset: the preview always runs what the editor shows. If
+esbuild-wasm fails to download, the next frontend edit tries again.
 
 `BrowserInertiaResponse` inherits rendering unchanged and only forces
 production-mode detection, provides an explicit Vite URL to avoid port scans,
