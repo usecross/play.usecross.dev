@@ -11,6 +11,11 @@ const starterApp = readFileSync('examples/counter/app.py', 'utf8');
 const starterTemplate = readFileSync('examples/counter/templates/app.html', 'utf8');
 const starterTsx = readFileSync('examples/counter/frontend/app.tsx', 'utf8');
 const starterCss = readFileSync('examples/counter/frontend/app.css', 'utf8');
+const starterPyproject = readFileSync('examples/counter/pyproject.toml', 'utf8');
+/** The starter's pyproject.toml with one more dependency. */
+const withDependency = (pin: string) => starterPyproject.replace('dependencies = [\n', `dependencies = [\n    "${pin}",\n`);
+/** The preview app's /health status field. */
+const healthStatus = (page: Page) => page.evaluate(() => fetch('/preview/health').then(r => r.json()).then(h => h.status));
 /** The starter's frontend, bundled here in Node as the deploy does. */
 const starterBuild = () => bundleFrontend(esbuild, Object.fromEntries(readdirSync('examples/counter/frontend')
   .map(name => [`frontend/${name}`, readFileSync(`examples/counter/frontend/${name}`, 'utf8')])));
@@ -121,12 +126,6 @@ test('edits to app.py and the template apply without losing data', async ({ page
   const plus = frame.getByRole('button', { name: '+', exact: true });
   await plus.click();
   await expect(counter).toHaveText('1');
-
-  // Dependencies are read-only until dependency edits land.
-  await page.getByRole('tab', { name: 'pyproject.toml' }).click();
-  await code.click();
-  await page.keyboard.type('# edited');
-  await expect(code).not.toContainText('# edited');
 
   // A Python edit applies after a pause; the count in SQLite survives it.
   const app = readFileSync('examples/counter/app.py', 'utf8');
@@ -259,6 +258,82 @@ test('frontend applies retry a failed esbuild load and land in order', async ({ 
   await expect(page.locator('#status')).toHaveText('Starter files restored');
   await expect(heading).toHaveText('Counter');
   await expect(page.getByRole('alert')).toBeHidden();
+});
+
+test('dependency edits install by restarting Python, without losing data', async ({ page, context }) => {
+  page.on('dialog', dialog => dialog.accept());
+  // Slow down the new package, so the new worker has loaded /data well before it is ready.
+  let wheelRequested!: () => void;
+  const installing = new Promise<void>(resolve => (wheelRequested = resolve));
+  await context.route('**/humanize-*.whl', async route => {
+    wheelRequested();
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    await route.continue();
+  });
+  await ready(page);
+  const frame = page.frameLocator('#preview');
+  const counter = frame.getByRole('status', { name: 'Counter value' });
+  const plus = frame.getByRole('button', { name: '+', exact: true });
+  const restart = page.getByRole('button', { name: 'Restart Python' });
+  await plus.click();
+  await expect(counter).toHaveText('1');
+
+  // A pyproject.toml edit waits for a restart instead of applying on a pause.
+  await replaceFile(page, 'pyproject.toml', withDependency('humanize==4.17.0'));
+  await expect(restart).toBeVisible();
+  await page.waitForTimeout(1_000); // Past the edit debounce.
+  await expect(page.locator('#status')).toHaveText('Ready');
+
+  // The old worker serves while the new one installs; its writes carry over.
+  await restart.click();
+  await expect(page.locator('#status')).toHaveText('Installing dependencies...');
+  await installing;
+  await plus.click();
+  await expect(counter).toHaveText('2');
+  await expect(page.locator('#status')).toHaveText('Python restarted', { timeout: 120_000 });
+  await expect(restart).toBeHidden();
+  await expect(counter).toHaveText('2');
+
+  // The new package imports in app.py, also after a full reload.
+  await replaceFile(page, 'app.py', starterApp
+    .replace('import cross_inertia\n', 'import cross_inertia\nimport humanize\n')
+    .replace('"status": "ok",', '"status": humanize.intcomma(1234567),'));
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  expect(await healthStatus(page)).toBe('1,234,567');
+  await page.reload();
+  await expect(page.locator('#status')).toHaveText('Ready', { timeout: 120_000 });
+  await expect(restart).toBeHidden();
+  expect(await healthStatus(page)).toBe('1,234,567');
+
+  // A dependency that fails to install leaves the running version serving.
+  await replaceFile(page, 'pyproject.toml', withDependency('humanize==4.17.0').replace('"humanize', '"no-such-package-for-play==1.0",\n    "humanize'));
+  await restart.click();
+  await expect(page.getByRole('alert')).toContainText('no-such-package-for-play', { timeout: 120_000 });
+  await expect(page.locator('#status')).toHaveText('Not applied: the previous version is still running');
+  await expect(restart).toBeVisible();
+  await plus.click();
+  await expect(counter).toHaveText('3');
+  expect(await healthStatus(page)).toBe('1,234,567');
+
+  // Reset to starter restarts with the starter's dependencies and keeps the data.
+  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await expect(page.locator('#status')).toHaveText('Starter files restored', { timeout: 120_000 });
+  await expect(restart).toBeHidden();
+  await expect(page.getByRole('alert')).toBeHidden();
+  await expect(counter).toHaveText('3');
+  expect(await healthStatus(page)).toBe('ok');
+});
+
+test('saved dependencies that fail to install fall back to the starter\'s', async ({ page }) => {
+  await page.addInitScript(([pyproject]) => localStorage.setItem('play.usecross.dev:counter-edits', JSON.stringify({
+    starter: 'any', files: { 'pyproject.toml': pyproject },
+  })), [withDependency('no-such-package-for-play==1.0')]);
+  await ready(page);
+  await expect(page.getByRole('alert')).toContainText('Your pyproject.toml failed to install');
+  await expect(page.getByRole('alert')).toContainText('no-such-package-for-play');
+  await expect(page.getByRole('button', { name: 'Restart Python' })).toBeVisible();
+  await page.getByRole('tab', { name: 'pyproject.toml' }).click();
+  await expect(editorCode(page)).toContainText('no-such-package-for-play');
 });
 
 test('edits are saved across reloads; reset and clear data are separate', async ({ page }) => {

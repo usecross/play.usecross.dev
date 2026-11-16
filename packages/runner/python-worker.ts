@@ -95,7 +95,13 @@ starter['project']['dependencies']
     await micropip.install(packages.filter(pkg => pkg.startsWith('typing-extensions==')));
     await pyodide.loadPackage(['pydantic', 'MarkupSafe', 'sqlite3']);
     // Installation failures are fatal: never substitute a fake CrossInertia.
-    await micropip.install(packages);
+    await micropip.install(packages).catch((error: Error) => {
+      // Keep the exception, such as "ValueError: Can't fetch metadata for
+      // 'some-package'", not micropip's own frames.
+      const lines = error.message.trimEnd().split('\n');
+      const frames = lines.map(line => line.startsWith(' ')).lastIndexOf(true);
+      throw new Error(lines.slice(frames + 1).join('\n'));
+    });
   } finally {
     micropip.destroy();
   }
@@ -261,6 +267,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
       case 'clear-data': {
         const error = await serialize(clearData);
         port?.postMessage({ type: 'applied', error });
+        break;
+      }
+
+      case 'reload-data': {
+        // After the requests before it, so a replaced worker's last writes are in IndexedDB.
+        await serialize(() => syncData(true));
+        port?.postMessage({ type: 'applied', error: null });
         break;
       }
     }

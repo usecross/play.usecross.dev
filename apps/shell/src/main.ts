@@ -12,25 +12,32 @@ const reloadBtn = document.getElementById('reload-btn') as HTMLButtonElement;
 const resetStarterBtn = document.getElementById('reset-starter-btn') as HTMLButtonElement;
 const clearDataBtn = document.getElementById('clear-data-btn') as HTMLButtonElement;
 const starterChangedEl = document.getElementById('starter-changed') as HTMLElement;
+const depsChangedEl = document.getElementById('deps-changed') as HTMLElement;
+const restartPythonBtn = document.getElementById('restart-python-btn') as HTMLButtonElement;
 
 let pythonWorker: Worker | null = null;
+// The pyproject.toml the running worker installed.
+let runningPyproject = counterSources['pyproject.toml'];
+// Preview requests wait on this while a restarted worker takes over.
+let takeover: Promise<void> = Promise.resolve();
 
 function updateStatus(message: string) {
   console.log('[Shell]', message);
   statusEl.textContent = message;
 }
 
-// Initialize Python worker
-async function initPythonWorker() {
-  updateStatus('Loading Python runtime...');
-  
-  pythonWorker = new Worker(
+/**
+ * Start a Python worker that runs the starter with this pyproject.toml's
+ * dependencies. Resolves once its app imports; on failure the worker is gone.
+ */
+async function startPython(pyproject: string): Promise<Worker> {
+  const pythonWorker = new Worker(
     new URL('../../../packages/runner/python-worker.ts', import.meta.url),
     { type: 'module' }
   );
   
   // Initialize with counter files
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<Worker>((resolve, reject) => {
     const channel = new MessageChannel();
     let settled = false;
     
@@ -73,8 +80,7 @@ async function initPythonWorker() {
           
           if (event.data.success) {
             console.log('[Shell] Python worker initialized');
-            updateStatus('Ready');
-            resolve();
+            resolve(pythonWorker);
           } else {
             reject(new Error(event.data.error || 'Python initialization failed'));
           }
@@ -91,10 +97,13 @@ async function initPythonWorker() {
     pythonWorker!.postMessage(
       {
         type: 'initialize',
-        files: counterFiles,
+        files: { ...counterFiles, [`${STARTER_DIR}/pyproject.toml`]: pyproject },
       },
       [channel.port2]
     );
+  }).catch(error => {
+    pythonWorker.terminate();
+    throw error;
   });
 }
 
@@ -118,7 +127,7 @@ function acquireRuntime(): Promise<void> {
 }
 
 // Answer Service Worker requests only after this tab's Python app is ready.
-function answerPreviewRequests(worker: Worker) {
+function answerPreviewRequests() {
   const pythonChannel = new BroadcastChannel('python-bridge');
   pythonChannel.addEventListener('message', (event) => {
     if (event.data.type !== 'python-request') return;
@@ -139,13 +148,7 @@ function answerPreviewRequests(worker: Worker) {
       }
     };
     
-    worker.postMessage(
-      {
-        type: 'http-request',
-        request,
-      },
-      [channel.port2]
-    );
+    takeover.then(() => pythonWorker!.postMessage({ type: 'http-request', request }, [channel.port2]));
   });
 }
 
@@ -186,17 +189,32 @@ async function initialize() {
     updateStatus('Service Worker registered');
     console.log('[Shell] Service Worker ready:', registration);
     
-    // Initialize Python worker
-    await initPythonWorker();
-    answerPreviewRequests(pythonWorker!);
-    
-    // Run saved edits before the preview first loads. Read them only now, so a
-    // tab that waited for another one gets that tab's latest edits.
+    // Start Python with the saved dependencies, or the starter's if they fail
+    // to install. Read saved edits only now, so a tab that waited for another
+    // one gets that tab's latest edits.
+    updateStatus('Loading Python runtime...');
+    const pyproject = currentFiles()['pyproject.toml'];
+    let installError: string | null = null;
+    try {
+      pythonWorker = await startPython(pyproject);
+      runningPyproject = pyproject;
+    } catch (error) {
+      if (pyproject === counterSources['pyproject.toml']) throw error;
+      installError = `Your pyproject.toml failed to install, so Python runs the starter's dependencies.\n\n${(error as Error).message}`;
+      updateStatus('Loading Python runtime with the starter\'s dependencies...');
+      pythonWorker = await startPython(counterSources['pyproject.toml']);
+    }
+    updateStatus('Ready');
+    answerPreviewRequests();
+
+    // Run saved edits before the preview first loads.
     await restoreSavedEdits();
+    if (installError && applyErrorEl.hidden) showError(installError);
+    updateDepsNotice();
 
     // Keep the frame blank until BOTH the SW and Python app are ready.
     previewFrame.src = '/preview/';
-    for (const button of [reloadBtn, resetStarterBtn, clearDataBtn]) button.disabled = false;
+    for (const button of [reloadBtn, resetStarterBtn, clearDataBtn, restartPythonBtn]) button.disabled = false;
     (await editor)?.setEditable(true);
   } catch (error) {
     pythonWorker?.terminate();
@@ -261,26 +279,30 @@ function saveEdit(path: string, content: string) {
 const vfsPaths = (files: Record<string, string>) =>
   Object.fromEntries(Object.entries(files).map(([path, content]) => [`${STARTER_DIR}/${path}`, content]));
 
-/** Send a message to the Python worker and wait for its answer: the error, or null. */
-function sendToPython(message: object): Promise<string | null> {
+/** Send a message to a Python worker and wait for its answer: the error, or null. */
+function sendToPython(message: object, worker = pythonWorker): Promise<string | null> {
   return new Promise((resolve, reject) => {
-    if (!pythonWorker) return reject(new Error('Python worker not initialized'));
+    if (!worker) return reject(new Error('Python worker not initialized'));
     const channel = new MessageChannel();
     channel.port1.onmessage = ({ data }) => {
       if (data.type === 'applied' || data.type === 'error') resolve(data.error);
     };
-    pythonWorker.postMessage(message, [channel.port2]);
+    worker.postMessage(message, [channel.port2]);
   });
 }
 
 const applyErrorEl = document.getElementById('apply-error') as HTMLElement;
 
+function showError(error: string) {
+  applyErrorEl.textContent = error;
+  applyErrorEl.hidden = false;
+  applyErrorEl.scrollTop = applyErrorEl.scrollHeight; // The error message is last.
+}
+
 /** Show a failed apply's traceback, or reload the preview after a successful one. */
 function showResult(error: string | null, success: string | null) {
   if (error) {
-    applyErrorEl.textContent = error;
-    applyErrorEl.hidden = false;
-    applyErrorEl.scrollTop = applyErrorEl.scrollHeight; // The error message is last.
+    showError(error);
     updateStatus('Not applied: the previous version is still running');
   } else {
     applyErrorEl.hidden = true;
@@ -296,24 +318,27 @@ function currentFiles(): Record<string, string> {
   return Object.fromEntries(editableSources.map(path => [path, saved[path] ?? counterSources[path]]));
 }
 
-// Applies run one at a time, in order, so a slow bundle can't land after a
-// later apply, such as a Reset to starter.
+// Applies, restarts and data clears run one at a time, in order, so a slow
+// bundle or install can't land after a later one, such as a Reset to starter.
 let lastApply: Promise<unknown> = Promise.resolve();
-
-/**
- * Apply every editable file. Python gets the frontend's build, not its
- * sources: the starter's own build when the frontend is unchanged, otherwise
- * a new bundle. Returns the error, or null.
- */
-function applyFiles(files: Record<string, string>): Promise<string | null> {
-  const apply = lastApply.then(() => bundleAndSend(files));
-  lastApply = apply.catch(() => {});
-  return apply;
+function queued(task: () => Promise<string | null>): Promise<string | null> {
+  const run = lastApply.then(task);
+  lastApply = run.catch(() => {});
+  return run;
 }
 
-async function bundleAndSend(files: Record<string, string>): Promise<string | null> {
+/**
+ * Apply every editable file except pyproject.toml, which applies by
+ * restarting Python. Python gets the frontend's build, not its sources: the
+ * starter's own build when the frontend is unchanged, otherwise a new bundle.
+ * Returns the error, or null.
+ */
+const applyFiles = (files: Record<string, string>) => queued(() => bundleAndSend(files));
+
+async function bundleAndSend(files: Record<string, string>, worker = pythonWorker): Promise<string | null> {
   const frontend = Object.fromEntries(Object.entries(files).filter(([path]) => path.startsWith('frontend/')));
-  const python = Object.fromEntries(Object.entries(files).filter(([path]) => !(path in frontend)));
+  const python = Object.fromEntries(Object.entries(files)
+    .filter(([path]) => !(path in frontend) && path !== 'pyproject.toml'));
   let build = starterBuildFiles;
   if (Object.entries(frontend).some(([path, content]) => content !== counterSources[path])) {
     try {
@@ -323,7 +348,45 @@ async function bundleAndSend(files: Record<string, string>): Promise<string | nu
       return (error as Error).message;
     }
   }
-  return sendToPython({ type: 'apply-files', files: vfsPaths({ ...python, ...build }) });
+  return sendToPython({ type: 'apply-files', files: vfsPaths({ ...python, ...build }) }, worker);
+}
+
+/**
+ * Start a new worker with the editor's files, including pyproject.toml, and
+ * switch to it. The running worker keeps serving until then, and keeps
+ * serving if the new one fails. Returns the error, or null.
+ */
+const restartPython = () => queued(async () => {
+  const files = currentFiles();
+  let worker: Worker;
+  try {
+    worker = await startPython(files['pyproject.toml']);
+  } catch (error) {
+    return (error as Error).message;
+  }
+  const error = await bundleAndSend(files, worker);
+  if (error) {
+    worker.terminate();
+    return error;
+  }
+  // The new worker loaded /data when it started. Hold preview requests, let
+  // the old worker finish (each request saves /data), then load it again.
+  let release!: () => void;
+  takeover = new Promise(resolve => (release = resolve));
+  try {
+    await sendToPython({ type: 'reload-data' }, pythonWorker);
+    pythonWorker!.terminate();
+    pythonWorker = worker;
+    runningPyproject = files['pyproject.toml'];
+    await sendToPython({ type: 'reload-data' }, worker);
+  } finally {
+    release();
+  }
+  return null;
+});
+
+function updateDepsNotice() {
+  depsChangedEl.hidden = currentFiles()['pyproject.toml'] === runningPyproject;
 }
 
 async function restoreSavedEdits() {
@@ -340,6 +403,7 @@ let applyTimer: ReturnType<typeof setTimeout> | undefined;
 
 function editChanged(path: string, content: string) {
   saveEdit(path, content);
+  if (path === 'pyproject.toml') return updateDepsNotice();
   editsPending = true;
   clearTimeout(applyTimer);
   applyTimer = setTimeout(applyEdits, 800);
@@ -361,13 +425,25 @@ resetStarterBtn.addEventListener('click', async () => {
   starterChangedEl.hidden = true;
   (await editor)?.setFiles(counterSources);
   updateStatus('Restoring the starter...');
-  showResult(await applyFiles(currentFiles()), 'Starter files restored');
+  const restart = runningPyproject !== counterSources['pyproject.toml'];
+  showResult(await (restart ? restartPython() : applyFiles(currentFiles())), 'Starter files restored');
+  updateDepsNotice();
+});
+
+restartPythonBtn.addEventListener('click', async () => {
+  clearTimeout(applyTimer);
+  editsPending = false;
+  restartPythonBtn.disabled = true;
+  updateStatus('Installing dependencies...');
+  showResult(await restartPython(), 'Python restarted');
+  restartPythonBtn.disabled = false;
+  updateDepsNotice();
 });
 
 clearDataBtn.addEventListener('click', async () => {
   if (!confirm('Delete the app\'s data, such as the count? Your code edits are kept.')) return;
   updateStatus('Clearing data...');
-  showResult(await sendToPython({ type: 'clear-data' }), 'Data cleared');
+  showResult(await queued(() => sendToPython({ type: 'clear-data' })), 'Data cleared');
 });
 
 // The editor loads in its own chunk, so it never delays Python.

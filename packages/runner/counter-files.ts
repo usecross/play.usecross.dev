@@ -24,8 +24,8 @@ export const counterSources: Record<string, string> = {
 /** Where counterSources live in Pyodide's file system. */
 export const STARTER_DIR = '/examples/counter';
 
-/** Sources the playground can apply edits to; the rest come in later steps. */
-export const editableSources = ['app.py', 'templates/app.html', 'frontend/app.tsx', 'frontend/app.css'];
+/** Sources the playground can apply edits to. pyproject.toml applies by restarting Python. */
+export const editableSources = ['app.py', 'templates/app.html', 'frontend/app.tsx', 'frontend/app.css', 'pyproject.toml'];
 
 /** The starter's frontend build, by path inside the project. */
 export const starterBuildFiles = starterBuild.files;

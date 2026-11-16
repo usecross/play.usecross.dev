@@ -292,6 +292,25 @@ trimmed to the starter's own files. Applies and preview requests share one
 serial queue in the worker, and the worker never writes `.pyc` files, so a
 fast re-edit can't load stale bytecode.
 
+**Dependency edits restart Python.** Python can't unload a package, so a
+`pyproject.toml` edit doesn't apply on a pause. The shell shows **Restart
+Python**, which starts a new worker with the edited `pyproject.toml` and the
+other edits, while the running worker keeps serving:
+
+1. The new worker loads Pyodide, `/data` and the dependencies, imports the
+   app, and applies the edits. If any of that fails, the shell shows the
+   error, drops the new worker, and the running one keeps serving.
+2. Preview requests are held. The old worker answers a `reload-data` message
+   after the requests before it, each of which saved `/data` to IndexedDB,
+   and is then terminated.
+3. The new worker loads `/data` again with `reload-data`, so writes made while
+   it installed are kept, and preview requests go to it.
+
+On page load the worker starts with the saved `pyproject.toml`. If that fails
+to install, it starts with the starter's, shows the error, and keeps
+**Restart Python** visible. **Reset to starter** restarts Python when the
+running dependencies aren't the starter's.
+
 **Edits are saved in the browser.** The shell keeps each edited file in
 `localStorage` (key `play.usecross.dev:counter-edits`), with a fingerprint of the
 starter they were made against; a file edited back to the starter is dropped.
@@ -473,7 +492,6 @@ setTimeout(() => {
 
 ### What Doesn't Work Yet
 ❌ npm packages beyond the template's import map  
-❌ Editing `pyproject.toml`  
 ❌ WSGI/Django  
 ❌ WebSocket/SSE  
 ❌ File uploads  
@@ -603,6 +621,7 @@ HTTP-only check of the shell would not exercise the ASGI bridge.
 - [x] Read-only CodeMirror 6 view of the starter's files (`apps/shell/src/editor.ts`, loaded lazily)
 - [x] Editing `app.py` and the template, with a Python reload that keeps `/data`
 - [x] Saving edits in the browser, Reset to starter, and Clear data
+- [x] Dependency edits, installed by restarting Python without losing data
 - [x] IDBFS for SQLite persistence
 - [x] esbuild-wasm for React bundling
 - [x] Hot reload for Python code changes

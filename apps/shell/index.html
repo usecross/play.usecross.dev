@@ -138,6 +138,20 @@
       color: #6b4e00;
     }
 
+    .deps-changed {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .deps-changed[hidden] {
+      display: none;
+    }
+
+    .deps-changed span {
+      flex: 1;
+    }
+
     button.secondary,
     .preview-toolbar button.secondary {
       padding: 0.45rem 0.8rem;
@@ -238,11 +252,16 @@
       <p id="starter-changed" class="starter-changed" role="status" hidden>
         The starter has changed since you edited it. Reset to starter to get the new version.
       </p>
+      <div id="deps-changed" class="starter-changed deps-changed" role="status" hidden>
+        <span>Dependency changes apply when Python restarts, which takes a few seconds. The app's data is kept.</span>
+        <button id="restart-python-btn" class="secondary" disabled>Restart Python</button>
+      </div>
       <div class="editor-footer">
         <p class="editor-note">
           The FastAPI and CrossInertia app on the right runs in your browser. Edit the Python, the
           template or the React frontend: changes apply when you pause typing or press
-          <kbd>⌘S</kbd>/<kbd>Ctrl+S</kbd>, and are saved in your browser.
+          <kbd>⌘S</kbd>/<kbd>Ctrl+S</kbd>, and are saved in your browser. Dependencies in
+          <code>pyproject.toml</code> install when you restart Python.
         </p>
         <button id="reset-starter-btn" class="secondary" disabled>Reset to starter</button>
       </div>

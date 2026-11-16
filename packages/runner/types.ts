@@ -114,7 +114,12 @@ export type WorkerMessage =
   /** Edited starter files by VFS path; the app is re-imported. */
   | { type: 'apply-files'; files: Record<string, string> }
   /** Delete the app's data directory and re-import it. Answered with 'applied'. */
-  | { type: 'clear-data' };
+  | { type: 'clear-data' }
+  /**
+   * Load the data directory from IndexedDB again, after the requests sent
+   * before it. Used when a restarted worker replaces this one. Answered with 'applied'.
+   */
+  | { type: 'reload-data' };
 
 export type WorkerResponse =
   | { type: 'initialized'; success: boolean; error?: string }
