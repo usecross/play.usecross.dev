@@ -111,9 +111,11 @@ export interface CookieJar {
 export type WorkerMessage =
   | { type: 'initialize'; files: VirtualFileSystem }
   | { type: 'http-request'; request: HttpRequest }
-  | { type: 'reset' };
+  /** Edited starter files by VFS path; the app is re-imported. */
+  | { type: 'apply-files'; files: Record<string, string> };
 
 export type WorkerResponse =
   | { type: 'initialized'; success: boolean; error?: string }
   | { type: 'http-response'; response: HttpResponse; error?: string }
-  | { type: 'reset-complete'; success: boolean };
+  /** error is the Python traceback when the edit was rolled back. */
+  | { type: 'applied'; error: string | null };

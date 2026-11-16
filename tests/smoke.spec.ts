@@ -70,17 +70,13 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
   expect(errors).toEqual([]);
 });
 
-test('the editor shows the starter files that run in Python, read-only', async ({ page }) => {
+test('the editor shows the starter files that run in Python', async ({ page }) => {
   await page.goto('/');
   const tabs = page.getByRole('tab');
   await expect(tabs).toHaveText(['app.py', 'templates/app.html', 'frontend/app.js', 'frontend/app.css', 'pyproject.toml']);
   await expect(page.getByRole('tab', { selected: true })).toHaveText('app.py');
   const code = page.getByRole('tabpanel').locator('.cm-content');
   await expect(code).toContainText('def read_count()');
-
-  await code.click();
-  await page.keyboard.type('# edited');
-  await expect(code).not.toContainText('# edited');
 
   // Arrow keys move between tabs; the panel follows the selection.
   await page.getByRole('tab', { name: 'app.py' }).focus();
@@ -90,6 +86,73 @@ test('the editor shows the starter files that run in Python, read-only', async (
   await expect(code).toContainText(`"cross-inertia==${crossInertiaVersion}"`);
   await page.getByRole('tab', { name: 'templates/app.html' }).click();
   await expect(code).toContainText('{{ inertia_body() }}');
+});
+
+test('edits to app.py and the template apply without losing data', async ({ page }) => {
+  await ready(page);
+  const frame = page.frameLocator('#preview');
+  const counter = frame.getByRole('status', { name: 'Counter value' });
+  const code = page.getByRole('tabpanel').locator('.cm-content');
+  const plus = frame.getByRole('button', { name: '+', exact: true });
+  await plus.click();
+  await expect(counter).toHaveText('1');
+
+  async function replaceFile(tab: string, content: string) {
+    await page.getByRole('tab', { name: tab }).click();
+    await code.click();
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.keyboard.insertText(content);
+  }
+
+  // The frontend is read-only until bundling lands.
+  await page.getByRole('tab', { name: 'frontend/app.js' }).click();
+  await code.click();
+  await page.keyboard.type('// edited');
+  await expect(code).not.toContainText('// edited');
+
+  // A Python edit applies after a pause; the count in SQLite survives it.
+  const app = readFileSync('examples/counter/app.py', 'utf8');
+  await replaceFile('app.py', app.replace('value = value + 1', 'value = value + 10'));
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(counter).toHaveText('1');
+  await plus.click();
+  await expect(counter).toHaveText('11');
+
+  // A broken edit is rolled back: the traceback shows, the last version keeps serving.
+  await replaceFile('app.py', app.replace('def read_count()', 'def read_count(:'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toContainText('SyntaxError');
+  await expect(page.locator('#status')).toHaveText('Not applied: the previous version is still running');
+  await page.getByRole('button', { name: 'Reload Preview' }).click();
+  await plus.click();
+  await expect(counter).toHaveText('21');
+
+  // Fixing it clears the error.
+  await replaceFile('app.py', app);
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toBeHidden();
+
+  // A broken template is rolled back on disk too, so a later app.py edit still
+  // builds on the last working template.
+  const template = readFileSync('examples/counter/templates/app.html', 'utf8');
+  await replaceFile('templates/app.html', template.replace('{{ inertia_body() }}', '{{ inertia_body( }}'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toContainText('TemplateSyntaxError');
+  await page.getByRole('button', { name: 'Reload Preview' }).click();
+  await expect(counter).toHaveText('21');
+  await replaceFile('app.py', app + '\n# edited after a broken template\n');
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(page.getByRole('alert')).toBeHidden();
+
+  // Template edits apply the same way as Python ones.
+  await replaceFile('templates/app.html', template.replace('<title>Counter - CrossInertia Playground</title>', '<title>Edited title</title>'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect.poll(() => page.evaluate(() => (document.querySelector('#preview') as HTMLIFrameElement).contentDocument?.title))
+    .toBe('Edited title');
+  await plus.click();
+  await expect(counter).toHaveText('22');
 });
 
 test('counter mutations stay inside the ASGI mount and persist in IndexedDB', async ({ page, context, browser }) => {

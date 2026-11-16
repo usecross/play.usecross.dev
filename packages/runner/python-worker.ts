@@ -30,13 +30,14 @@ function syncData(populate: boolean): Promise<void> {
 }
 let initialized = false;
 
-// Queue to serialize concurrent http-request handling
-interface QueuedRequest {
-  request: HttpRequest;
-  port: MessagePort;
+// Requests and edits run one at a time, in arrival order: they share
+// request_json and the app module.
+let queue: Promise<unknown> = Promise.resolve();
+function serialize<T>(task: () => Promise<T>): Promise<T> {
+  const result = queue.then(task);
+  queue = result.catch(() => {});
+  return result;
 }
-let requestQueue: QueuedRequest[] = [];
-let processingRequest = false;
 
 /**
  * Initialize Pyodide and load dependencies
@@ -113,6 +114,9 @@ starter['project']['dependencies']
   // Import it
   pyodide.runPython(`
 import sys
+# Edits rewrite app.py, possibly within the same second and at the same size,
+# which would let a stale .pyc win. Never write bytecode.
+sys.dont_write_bytecode = True
 sys.path.insert(0, '/')
 import asgi_bridge
   `);
@@ -185,48 +189,32 @@ json.dumps(response)
 }
 
 /**
- * Reset the worker (reload Python code)
+ * Write edited starter files and re-import the app. Returns the traceback if
+ * the new code fails; the previous version then keeps serving.
  */
-async function reset(): Promise<void> {
-  // For Phase 0, we do a simple reload
-  // In later phases, this would preserve the database
-  if (pyodide) {
-    await pyodide.runPythonAsync(`
-import sys
-# Clear cached modules
-for key in list(sys.modules.keys()):
-    if key.startswith('app') or key.startswith('examples'):
-        del sys.modules[key]
-    `);
+async function applyFiles(files: Record<string, string>): Promise<string | null> {
+  if (!pyodide || !initialized) {
+    throw new Error('Python worker not initialized');
   }
+  pyodide.globals.set('files_json', JSON.stringify(files));
+  return await pyodide.runPythonAsync(`
+import json
+from asgi_bridge import apply_files
+apply_files(json.loads(files_json))
+  `) ?? null;
 }
 
-/**
- * Process queued http-requests serially to avoid shared request_json conflicts
- */
-async function processRequestQueue() {
-  if (processingRequest || requestQueue.length === 0) {
-    return;
+async function answerHttpRequest(request: HttpRequest, port: MessagePort) {
+  try {
+    const response = await handleHttpRequest(request);
+    // Save before answering, so a reload right after a response keeps it.
+    await syncData(false);
+    port.postMessage({ type: 'http-response', response });
+  } catch (error) {
+    console.error('[Python Worker] Error:', error);
+    const errorMessage = (error as Error).message;
+    port.postMessage({ type: 'http-response', error: errorMessage });
   }
-  
-  processingRequest = true;
-  
-  while (requestQueue.length > 0) {
-    const { request, port } = requestQueue.shift()!;
-    
-    try {
-      const response = await handleHttpRequest(request);
-      // Save before answering, so a reload right after a response keeps it.
-      await syncData(false);
-      port.postMessage({ type: 'http-response', response });
-    } catch (error) {
-      console.error('[Python Worker] Error:', error);
-      const errorMessage = (error as Error).message;
-      port.postMessage({ type: 'http-response', error: errorMessage });
-    }
-  }
-  
-  processingRequest = false;
 }
 
 // Message handler
@@ -247,15 +235,13 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
           console.error('[Python Worker] No port for http-request');
           return;
         }
-        // Queue the request for serial processing
-        requestQueue.push({ request: data.request, port });
-        processRequestQueue();
+        serialize(() => answerHttpRequest(data.request, port));
         break;
       }
 
-      case 'reset': {
-        await reset();
-        port?.postMessage({ type: 'reset-complete', success: true });
+      case 'apply-files': {
+        const error = await serialize(() => applyFiles(data.files));
+        port?.postMessage({ type: 'applied', error });
         break;
       }
     }
