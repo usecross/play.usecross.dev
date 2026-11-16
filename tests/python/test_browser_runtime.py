@@ -73,6 +73,7 @@ class BrowserRuntimeTests(unittest.IsolatedAsyncioTestCase):
             asset = await asgi_bridge.handle_http_request(request(f"/static/build/{entry['file']}"))
             self.assertEqual(asset["status"], 200)
             self.assertIn("javascript", asset["headers"]["content-type"])
+            self.assertEqual(bytes(asset["body"]), (STARTER / "static/build" / entry["file"]).read_bytes())
             missing = await asgi_bridge.handle_http_request(request("/static/build/assets/missing.js", accept="text/html"))
             self.assertEqual(missing["status"], 404)
 
