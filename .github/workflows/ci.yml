@@ -42,8 +42,8 @@ jobs:
             playwright-${{ runner.os }}-
 
       - name: Install Playwright browsers
-        # Only install if cache missed to save time
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        # Always run: a cache hit restores the browsers but not their system
+        # libraries (WebKit needs them), and skips browsers added since.
         run: bun test:install
 
       - name: Typecheck runner and shell
