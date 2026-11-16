@@ -347,6 +347,7 @@ test('dependency edits install by restarting Python, without losing data', async
   // The old worker serves while the new one installs; its writes carry over.
   await restart.click();
   await expect(page.locator('#status')).toHaveText('Installing dependencies...');
+  await expect(page.getByRole('button', { name: 'Reset to starter' })).toBeDisabled();
   await installing;
   await plus.click();
   await expect(counter).toHaveText('2');
@@ -561,7 +562,10 @@ test('a hard reload, which skips the Service Worker, still starts the playground
   test.skip(browserName !== 'chromium', 'A cache-bypassing reload needs the Chrome DevTools Protocol');
   await ready(page);
   const cdp = await page.context().newCDPSession(page);
+  // Page.reload returns before the old page unloads, and its status is Ready too.
+  const reloaded = page.waitForEvent('framenavigated', frame => frame === page.mainFrame());
   await cdp.send('Page.reload', { ignoreCache: true });
+  await reloaded;
   await expect(page.locator('#status')).toHaveText(/^(Ready|Failed to initialize:.*)$/s, { timeout: 120_000 });
   await expect(page.locator('#status')).toHaveText('Ready');
   await expect(page.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('0');

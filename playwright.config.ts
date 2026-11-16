@@ -21,6 +21,9 @@ export default defineConfig({
     // PLAYWRIGHT_BASE_URL tests an already running site, such as production.
     baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
     trace: 'on-first-retry',
+    // The shell's spinners stop with reduced motion. Playwright's WebKit
+    // repaints CSS animations on the CPU, which slowed every test's startup.
+    reducedMotion: 'reduce',
   },
 
   projects: [

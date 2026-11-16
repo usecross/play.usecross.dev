@@ -99,7 +99,7 @@ function Status({ status, ready }: { status: string; ready: boolean }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
       {kind === 'busy'
-        ? <LoaderCircle aria-hidden className="size-3 shrink-0 animate-spin" />
+        ? <LoaderCircle aria-hidden className="size-3 shrink-0 animate-spin motion-reduce:animate-none" />
         : <span aria-hidden className={cn('size-1.5 shrink-0 rounded-full', kind === 'ok' ? 'bg-emerald-500' : 'bg-red-500')} />}
       <span id="status" role="status" className="truncate" title={status}>{status}</span>
     </span>
@@ -111,7 +111,7 @@ function Starting({ status }: { status: string }) {
   return (
     <div aria-hidden className="absolute inset-0 grid place-items-center bg-background p-6">
       <div className={cn('flex max-w-sm items-start gap-2 text-sm', failed ? 'text-destructive' : 'text-muted-foreground')}>
-        {failed ? <CircleAlert className="mt-0.5 size-4 shrink-0" /> : <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin" />}
+        {failed ? <CircleAlert className="mt-0.5 size-4 shrink-0" /> : <LoaderCircle className="mt-0.5 size-4 shrink-0 animate-spin motion-reduce:animate-none" />}
         <span>{status}</span>
       </div>
     </div>
@@ -204,7 +204,7 @@ function Sidebar({ state }: { state: ShellState }) {
           onClick={restart}
           className="justify-start"
         >
-          {state.restarting ? <LoaderCircle className="animate-spin" /> : <RotateCw />}Restart Python
+          {state.restarting ? <LoaderCircle className="animate-spin motion-reduce:animate-none" /> : <RotateCw />}Restart Python
         </Button>
         <Confirm
           label={<><Database />Clear data</>}
@@ -219,7 +219,9 @@ function Sidebar({ state }: { state: ShellState }) {
           title="Reset to the starter?"
           description="This discards your edits to every file and restores the starter's code. The app's data is kept."
           action="Discard edits"
-          disabled={!state.ready}
+          // A reset decides whether to restart from the dependencies Python
+          // runs, which a restart in progress is about to change.
+          disabled={!state.ready || state.restarting}
           onConfirm={resetToStarter}
         />
         <p className="pt-1 text-[11px] text-muted-foreground">Pyodide {runtimeVersions.pyodideVersion}</p>
