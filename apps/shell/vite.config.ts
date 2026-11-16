@@ -1,4 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 import { readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import * as esbuild from 'esbuild-wasm';
@@ -28,7 +30,7 @@ function starterBuild(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [starterBuild()],
+  plugins: [react(), tailwindcss(), starterBuild()],
   build: {
     rollupOptions: {
       input: {
@@ -61,6 +63,7 @@ export default defineConfig({
     alias: {
       '@play.usecross.dev/runner': resolve(__dirname, '../../packages/runner'),
       '@play.usecross.dev/bundler': resolve(__dirname, '../../packages/bundler'),
+      '@': resolve(__dirname, 'src'),
     },
   },
 });
