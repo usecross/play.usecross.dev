@@ -204,6 +204,19 @@ apply_files(json.loads(files_json))
   `) ?? null;
 }
 
+/** Delete everything in the data directory, re-import the app, and save. */
+async function clearData(): Promise<string | null> {
+  if (!pyodide || !initialized) {
+    throw new Error('Python worker not initialized');
+  }
+  const error = await pyodide.runPythonAsync(`
+from asgi_bridge import clear_data
+clear_data('${DATA_DIR}')
+  `) ?? null;
+  await syncData(false);
+  return error;
+}
+
 async function answerHttpRequest(request: HttpRequest, port: MessagePort) {
   try {
     const response = await handleHttpRequest(request);
@@ -241,6 +254,12 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
 
       case 'apply-files': {
         const error = await serialize(() => applyFiles(data.files));
+        port?.postMessage({ type: 'applied', error });
+        break;
+      }
+
+      case 'clear-data': {
+        const error = await serialize(clearData);
         port?.postMessage({ type: 'applied', error });
         break;
       }

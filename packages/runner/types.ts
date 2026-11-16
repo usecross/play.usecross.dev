@@ -112,7 +112,9 @@ export type WorkerMessage =
   | { type: 'initialize'; files: VirtualFileSystem }
   | { type: 'http-request'; request: HttpRequest }
   /** Edited starter files by VFS path; the app is re-imported. */
-  | { type: 'apply-files'; files: Record<string, string> };
+  | { type: 'apply-files'; files: Record<string, string> }
+  /** Delete the app's data directory and re-import it. Answered with 'applied'. */
+  | { type: 'clear-data' };
 
 export type WorkerResponse =
   | { type: 'initialized'; success: boolean; error?: string }

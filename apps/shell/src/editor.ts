@@ -46,7 +46,7 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
   const readOnly = (path: string) => EditorState.readOnly.of(!(enabled && options.editable.includes(path)));
 
   // One state per file keeps each file's scroll position, selection and history.
-  const states = new Map(Object.entries(files).map(([path, doc]) => [path, EditorState.create({
+  const createState = (path: string, doc: string) => EditorState.create({
     doc,
     extensions: [
       keymap.of([{ key: 'Mod-s', run: () => { options.onSave(); return true; } }]),
@@ -58,7 +58,8 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
         if (update.docChanged) options.onChange(path, update.state.doc.toString());
       }),
     ],
-  })]));
+  });
+  const states = new Map(Object.entries(files).map(([path, doc]) => [path, createState(path, doc)]));
   const [first] = states.keys();
   const view = new EditorView({ state: states.get(first)!, parent: panel });
   let current = first;
@@ -105,6 +106,12 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
   container.replaceChildren(tabs, panel);
 
   return {
+    /** Replace files' contents, such as saved edits or the starter's, without reporting them as edits. */
+    setFiles(contents: Record<string, string>) {
+      for (const [path, doc] of Object.entries(contents)) states.set(path, createState(path, doc));
+      view.setState(states.get(current)!);
+      view.dispatch({ effects: access.reconfigure(readOnly(current)) });
+    },
     setEditable(value: boolean) {
       enabled = value;
       view.dispatch({ effects: access.reconfigure(readOnly(current)) });
