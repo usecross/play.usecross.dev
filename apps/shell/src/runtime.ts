@@ -246,11 +246,12 @@ async function initialize() {
       updateStatus('Loading Python runtime with the starter\'s dependencies...');
       pythonWorker = await startPython(counterSources['pyproject.toml']);
     }
-    updateStatus('Ready');
     answerPreviewRequests();
 
-    // Run saved edits before the preview first loads.
+    // Run saved edits before the preview first loads. Bundling frontend edits
+    // takes seconds, so Ready waits for them.
     await restoreSavedEdits();
+    if (!state.error) updateStatus('Ready');
     if (installError && !state.error) showError(installError);
     updateDepsNotice();
 
@@ -482,6 +483,7 @@ async function restoreSavedEdits() {
   if (!saved) return;
   (await editor)?.setFiles(currentFiles());
   update({ starterChanged: saved.starter !== starterFingerprint });
+  updateStatus('Applying your saved edits...');
   showResult(await applyFiles(currentFiles()), null);
 }
 
