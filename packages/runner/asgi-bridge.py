@@ -166,9 +166,9 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
             with open(path, 'w') as file:
                 file.write(content)
         importlib.invalidate_caches()
-        importlib.import_module('app')
         # Check what initialization checks: manifest and template load.
-        browser_inertia.reload()
+        with browser_inertia.new_version():
+            importlib.import_module('app')
         return None
     except BaseException as exc:
         # Show only the starter's own frames (Python files and Jinja

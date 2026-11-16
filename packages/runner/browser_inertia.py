@@ -7,8 +7,11 @@ detection and that prefix, not rendering or protocol behavior. Remove this
 once upstream supports both.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
+import cross_inertia._config as inertia_config
 from cross_inertia import configure_inertia
 from cross_inertia._core import reset_inertia_response
 from cross_inertia.fastapi import InertiaResponse, get_inertia_response
@@ -34,25 +37,46 @@ def _render_under_mount(self: InertiaResponse, request: Request, *args: Any, **k
         self.asset_url_prefix = prefix
 
 
-def install() -> None:
-    """Apply the browser settings before the starter imports CrossInertia."""
+def _configure() -> None:
     # An explicit port also avoids the automatic port scan, which needs sockets.
     configure_inertia(vite_port=5173)
+
+
+def install() -> None:
+    """Apply the browser settings before the starter imports CrossInertia."""
+    _configure()
     InertiaResponse.is_dev_mode = _is_dev_mode
     InertiaResponse.render = _render_under_mount
 
 
 def reload() -> None:
-    """Load the edited template and new manifest, failing as a missing build would.
+    """Load the template and manifest, failing as a missing build would.
 
-    The renderer caches both, and it outlives the starter's module. After a
-    failure, the next request makes a new one from the restored files.
+    The renderer caches both, and it outlives the starter's module.
     """
     reset_inertia_response()
+    response = get_inertia_response()
+    response.get_manifest()
+    response.templates.get_template("app.html")
+
+
+@contextmanager
+def new_version() -> Iterator[None]:
+    """Import an edited starter inside this block, then check it loads.
+
+    CrossInertia's configuration outlives the starter's module too. Each
+    version starts from the browser settings, so a configure_inertia() call
+    the edit removed no longer applies. If it fails, the last working
+    version's configuration comes back, and its next request makes a new
+    renderer from the restored files.
+    """
+    # CrossInertia has no public way to save and restore its configuration.
+    saved = inertia_config._config, inertia_config._config_explicitly_set
+    _configure()
     try:
-        response = get_inertia_response()
-        response.get_manifest()
-        response.templates.get_template("app.html")
+        yield
+        reload()
     except BaseException:
+        inertia_config._config, inertia_config._config_explicitly_set = saved
         reset_inertia_response()
         raise

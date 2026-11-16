@@ -152,6 +152,14 @@ test('edits to app.py and the template apply without losing data', async ({ page
   await plus.click();
   await expect(counter).toHaveText('21');
 
+  // A failed edit's CrossInertia settings go with it: the last version keeps rendering.
+  await replaceFile(page, 'app.py', app
+    .replace('import cross_inertia\n', 'import cross_inertia\nfrom cross_inertia import configure_inertia\n')
+    .replace('app = FastAPI()', 'configure_inertia(vite_port=5173, template_dir="missing")\napp = FastAPI()'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toContainText('TemplateNotFound');
+  expect(await page.evaluate(() => fetch('/preview/counter').then(response => response.status))).toBe(200);
+
   // Fixing it clears the error.
   await replaceFile(page, 'app.py', app);
   await page.keyboard.press('ControlOrMeta+s');
