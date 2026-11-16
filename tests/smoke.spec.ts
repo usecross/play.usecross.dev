@@ -259,6 +259,24 @@ test('errors in the running preview show in the shell', async ({ page }) => {
   await replaceFile(page, 'frontend/app.tsx', starterTsx);
   await expect(page.locator('#status')).toHaveText('Changes applied');
   await expect(alert).toBeHidden();
+
+  // An error in a click handler shows; reloading only the preview clears it and the status.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace(
+    "onClick={() => submit('reset')}>Reset</button>", "onClick={() => { throw new Error('Reset broke'); }}>Break</button>"));
+  await page.frameLocator('#preview').getByRole('button', { name: 'Break' }).click();
+  await expect(alert).toContainText('Error: Reset broke');
+  await expect(page.locator('#status')).toHaveText('The preview has an error');
+  await page.getByRole('button', { name: 'Reload Preview' }).click();
+  await expect(alert).toBeHidden();
+  await expect(page.locator('#status')).toHaveText('Ready');
+
+  // The reporter runs after a doctype and before the page's scripts, and skips a
+  // <head> inside a comment.
+  await replaceFile(page, 'templates/app.html', starterTemplate.replace('<head>', '<!-- <head> in a comment --><head>'));
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  const html = await page.evaluate(() => fetch('/preview/counter').then(r => r.text()));
+  expect(html).toMatch(/^<!DOCTYPE html>\s*<html lang="en">\s*<!-- <head> in a comment --><head><script>\(/); // The function's name is minified in production.
+  expect(await page.evaluate(() => (document.querySelector('#preview') as HTMLIFrameElement).contentDocument!.compatMode)).toBe('CSS1Compat');
 });
 
 test('frontend applies retry a failed esbuild load and land in order', async ({ page }) => {

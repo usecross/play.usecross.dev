@@ -83,8 +83,14 @@ async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
 function withErrorReporter(body: Uint8Array): Uint8Array<ArrayBuffer> {
   const html = new TextDecoder().decode(body);
   const script = `<script>(${reportPreviewErrors})()</script>`;
-  const head = /<head[^>]*>/i.exec(html);
-  const at = head ? head.index + head[0].length : 0;
+  // After the first <head> tag outside a comment; without one, after the doctype,
+  // since anything before it would put the page in quirks mode.
+  let at = /^\s*<!doctype[^>]*>/i.exec(html)?.[0].length ?? 0;
+  for (const match of html.matchAll(/<!--[\s\S]*?-->|<head\b[^>]*>/gi)) {
+    if (match[0].startsWith('<!--')) continue;
+    at = match.index + match[0].length;
+    break;
+  }
   return new TextEncoder().encode(html.slice(0, at) + script + html.slice(at));
 }
 

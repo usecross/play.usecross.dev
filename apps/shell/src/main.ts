@@ -241,7 +241,11 @@ window.addEventListener('message', (event) => {
   
   // The Service Worker's injected reporter: a new page starts, or it threw.
   if (event.data.type === 'preview:start') {
-    if (previewErrorShown) applyErrorEl.hidden = true;
+    // Only the preview's own error clears; an apply error stays until the next apply.
+    if (previewErrorShown) {
+      applyErrorEl.hidden = true;
+      updateStatus('Ready');
+    }
     previewErrorShown = false;
   } else if (event.data.type === 'preview:error' && !previewErrorShown && applyErrorEl.hidden) {
     // The first error is usually the cause; later ones follow from it.
