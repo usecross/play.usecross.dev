@@ -24,11 +24,12 @@ See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraint
 - One tab runs Python at a time; another tab waits and takes over with the saved data
 - Editing `app.py`, the template and the React frontend (`app.tsx`, `app.css`): frontend edits are bundled in the browser with esbuild-wasm, and a new bundle changes the Inertia asset version
 - Editing dependencies in `pyproject.toml`: **Restart Python** installs them in a new worker while the old one keeps serving, then switches with the data kept; a failed install leaves the old one running
+- Errors thrown in the running preview, such as a render error or an import the import map doesn't provide, show under the editor
 - Edits are saved in the browser and restored on reload; **Reset to starter** discards them and **Clear data** empties the database, each without touching the other
 
 ### Not implemented yet
 
-- npm packages beyond the template's import map (React, React DOM and Inertia from pinned CDN URLs); runtime errors in the preview aren't shown in the shell yet
+- npm packages beyond the template's import map (React, React DOM and Inertia from pinned CDN URLs)
 - Django/WSGI, SSR, WebSockets/SSE, or cross-origin runner isolation
 - Async prop callbacks that need an event loop/thread bridge; this milestone uses plain props
 

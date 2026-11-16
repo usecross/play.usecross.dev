@@ -229,6 +229,38 @@ test('frontend edits are bundled in the browser and keep data', async ({ page })
   await expect(counter).toHaveText('1');
 });
 
+test('errors in the running preview show in the shell', async ({ page }) => {
+  await ready(page);
+  const alert = page.getByRole('alert');
+  const heading = page.frameLocator('#preview').getByRole('heading', { level: 1 });
+
+  // A render error bundles fine, then throws in the browser.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>{missingName}</h1>'));
+  await expect(page.locator('#status')).toHaveText('The preview has an error', { timeout: 30_000 });
+  await expect(alert).toContainText('Error in the preview:');
+  await expect(alert).toContainText('ReferenceError');
+  await expect(alert).toContainText('missingName');
+  // Frames point at the bundle without the origin or the /preview mount.
+  await expect(alert).toContainText(/assets\/app-\w+\.js:\d+/);
+  await expect(alert).not.toContainText('/preview/');
+
+  // Fixing it clears the error.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>Fixed</h1>'));
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(heading).toHaveText('Fixed');
+  await expect(alert).toBeHidden();
+
+  // A package the template's import map doesn't provide fails when the page loads it.
+  await replaceFile(page, 'frontend/app.tsx', "import confetti from 'canvas-confetti';\nconfetti();\n" + starterTsx);
+  await expect(alert).toContainText('canvas-confetti', { timeout: 30_000 });
+  await expect(page.locator('#status')).toHaveText('The preview has an error');
+
+  // A reload of a working page clears it too.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx);
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(alert).toBeHidden();
+});
+
 test('frontend applies retry a failed esbuild load and land in order', async ({ page }) => {
   page.on('dialog', dialog => dialog.accept());
   // The first esbuild download fails; the next one is slow.
