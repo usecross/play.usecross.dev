@@ -209,11 +209,19 @@ and applies run one at a time in order, so a slow bundle can't land after a
 later edit or reset: the preview always runs what the editor shows. If
 esbuild-wasm fails to download, the next frontend edit tries again.
 
-`BrowserInertiaResponse` inherits rendering unchanged and only forces
-production-mode detection, provides an explicit Vite URL to avoid port scans,
-disables SSR, and adds the request's ASGI `root_path` to asset URLs during each
-render. Upstream support for an explicit runtime mode and for `root_path` in
-asset URLs should eventually replace that subclass.
+The starter uses `InertiaDep` and CrossInertia's default settings, run from
+its own folder as `fastapi run` would. Before it loads, `browser_inertia.py`
+forces production-mode detection, sets an explicit Vite port to avoid port
+scans, and adds the request's ASGI `root_path` to asset URLs during each
+render; rendering is unchanged. After each apply it drops CrossInertia's
+cached renderer, which holds the manifest and Jinja environment, and checks
+that a new one loads. Upstream support for an explicit runtime mode and for
+`root_path` in asset URLs should eventually replace these settings.
+
+Pyodide has no threads. Starlette and FastAPI run sync routes, sync
+dependencies and file reads (`StaticFiles`, `app.frontend()`) through anyio's
+thread pool, so the ASGI bridge runs that work inline. The worker handles one
+request at a time and its files are in memory, so nothing waits on it.
 
 CrossInertia 0.22.1 cannot render these plain props inside Pyodide's running
 event loop without attempting to start a thread; 0.22.2 can, and is pinned in

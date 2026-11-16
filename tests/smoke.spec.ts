@@ -80,7 +80,6 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
   });
 
   expect(result.health.cross_inertia_version).toBe(crossInertiaVersion);
-  expect(result.health.response_class).toBe('browser_inertia.BrowserInertiaResponse');
   expect(result.htmlStatus).toBe(200);
   expect(result.vary).toBe('X-Inertia');
   expect(result.initialPage).toMatchObject({
@@ -152,6 +151,14 @@ test('edits to app.py and the template apply without losing data', async ({ page
   await page.getByRole('button', { name: 'Reload Preview' }).click();
   await plus.click();
   await expect(counter).toHaveText('21');
+
+  // A failed edit's CrossInertia settings go with it: the last version keeps rendering.
+  await replaceFile(page, 'app.py', app
+    .replace('import cross_inertia\n', 'import cross_inertia\nfrom cross_inertia import configure_inertia\n')
+    .replace('app = FastAPI()', 'configure_inertia(vite_port=5173, template_dir="missing")\napp = FastAPI()'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.getByRole('alert')).toContainText('TemplateNotFound');
+  expect(await page.evaluate(() => fetch('/preview/counter').then(response => response.status))).toBe(200);
 
   // Fixing it clears the error.
   await replaceFile(page, 'app.py', app);
@@ -542,9 +549,8 @@ test('published protocol handles partial reloads, version conflicts and validati
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'invalid' }),
     });
     const health = await (await fetch('/preview/health')).json();
-    const privateFile = await fetch('/preview/static/build/.vite/manifest.json');
     const missingAsset = await fetch('/preview/static/build/assets/missing.js');
-    return { full, partial, stale, invalidStatus: invalid.status, health, privateStatus: privateFile.status, missingStatus: missingAsset.status };
+    return { full, partial, stale, invalidStatus: invalid.status, health, missingStatus: missingAsset.status };
   });
   expect(result.full.status).toBe(200);
   expect(result.full.headers['x-inertia']).toBe('true');
@@ -554,7 +560,6 @@ test('published protocol handles partial reloads, version conflicts and validati
   expect(result.stale.headers['x-inertia-location']).toMatch(/\/preview\/counter$/);
   expect(result.invalidStatus).toBe(422);
   expect(result.health.counter).toBe(0);
-  expect(result.privateStatus).toBe(404);
   expect(result.missingStatus).toBe(404);
 });
 

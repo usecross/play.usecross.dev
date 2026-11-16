@@ -2,20 +2,23 @@
 name = "counter"
 version = "0.1.0"
 description = "FastAPI + CrossInertia counter starter for the playground"
-# Pyodide 0.27.8 runs Python 3.12.
-requires-python = ">=3.12"
+# Pyodide 0.29.5 runs Python 3.13.
+requires-python = ">=3.13"
 # Direct pins, installed with micropip in Pyodide and with uv for native tests.
 # Pyodide supplies its own WASM pydantic_core and MarkupSafe builds.
 dependencies = [
     # 0.22.2 is the first release that renders without threads (cross-inertia #146).
     "cross-inertia==0.22.2",
     "cross-web==0.7.0",
-    "fastapi==0.115.12",
-    "starlette==0.46.2",
-    "pydantic==2.10.5",
+    "fastapi==0.163.1",
+    "starlette==1.10.0",
+    "pydantic==2.12.5",
     "jinja2==3.1.6",
     "httpx==0.28.1",
     "itsdangerous==2.2.0",
     "anyio==4.9.0",
     "typing-extensions==4.15.0",
+    "typing-inspection==0.4.2",
+    "annotated-doc==0.0.6",
+    "opentelemetry-api==1.45.2",
 ]
