@@ -5,7 +5,10 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
     "types": ["vite/client"],
+    "jsx": "react-jsx",
+    "baseUrl": ".",
     "paths": {
+      "@/*": ["./src/*"],
       "@play.usecross.dev/runner/*": ["../../packages/runner/*"],
       "@play.usecross.dev/bundler/*": ["../../packages/bundler/*"]
     },

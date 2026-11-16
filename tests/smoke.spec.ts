@@ -23,11 +23,19 @@ const starterBuild = () => bundleFrontend(esbuild, Object.fromEntries(readdirSyn
 const previewVersion = (page: Page) => page.evaluate(() => JSON.parse(
   (document.querySelector('#preview') as HTMLIFrameElement).contentDocument!.querySelector('script[data-page]')!.textContent!,
 ).version);
-const editorCode = (page: Page) => page.getByRole('tabpanel').locator('.cm-content');
+const editorCode = (page: Page) => page.locator('#editor .cm-content');
+/** A starter file's entry in the sidebar, by its path. */
+const fileButton = (page: Page, path: string) =>
+  page.getByRole('navigation', { name: 'Files' }).getByRole('button', { name: path, exact: true });
+/** Confirm a sidebar action, such as Clear data, in its dialog. */
+async function confirmAction(page: Page, button: string, action: string) {
+  await page.getByRole('button', { name: button }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: action }).click();
+}
 
 /** Replace a starter file's contents in the editor, as typing would. */
 async function replaceFile(page: Page, tab: string, content: string) {
-  await page.getByRole('tab', { name: tab }).click();
+  await fileButton(page, tab).click();
   await editorCode(page).click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.insertText(content);
@@ -102,19 +110,20 @@ test('real CrossInertia initializes and serves manifest-backed assets', async ({
 
 test('the editor shows the starter files that run in Python', async ({ page }) => {
   await page.goto('/');
-  const tabs = page.getByRole('tab');
-  await expect(tabs).toHaveText(['app.py', 'templates/app.html', 'frontend/app.tsx', 'frontend/app.css', 'pyproject.toml']);
-  await expect(page.getByRole('tab', { selected: true })).toHaveText('app.py');
-  const code = page.getByRole('tabpanel').locator('.cm-content');
+  // The sidebar lists folders first, as editors do; each file is named by its path.
+  const files = page.getByRole('navigation', { name: 'Files' }).getByRole('button');
+  await expect.poll(() => files.evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label'))))
+    .toEqual(['frontend/app.css', 'frontend/app.tsx', 'templates/app.html', 'app.py', 'pyproject.toml']);
+  await expect(fileButton(page, 'app.py')).toHaveAttribute('aria-current', 'true');
+  const code = editorCode(page);
   await expect(code).toContainText('def read_count()');
 
-  // Arrow keys move between tabs; the panel follows the selection.
-  await page.getByRole('tab', { name: 'app.py' }).focus();
-  await page.keyboard.press('ArrowLeft');
-  await expect(page.getByRole('tab', { selected: true })).toHaveText('pyproject.toml');
-  await expect(page.getByRole('tab', { name: 'pyproject.toml' })).toBeFocused();
+  // Picking a file shows it, and only it is current.
+  await fileButton(page, 'pyproject.toml').click();
   await expect(code).toContainText(`"cross-inertia==${crossInertiaVersion}"`);
-  await page.getByRole('tab', { name: 'templates/app.html' }).click();
+  await expect(fileButton(page, 'pyproject.toml')).toHaveAttribute('aria-current', 'true');
+  await expect(fileButton(page, 'app.py')).toHaveAttribute('aria-current', 'false');
+  await fileButton(page, 'templates/app.html').click();
   await expect(code).toContainText('{{ inertia_body() }}');
 });
 
@@ -122,7 +131,7 @@ test('edits to app.py and the template apply without losing data', async ({ page
   await ready(page);
   const frame = page.frameLocator('#preview');
   const counter = frame.getByRole('status', { name: 'Counter value' });
-  const code = page.getByRole('tabpanel').locator('.cm-content');
+  const code = editorCode(page);
   const plus = frame.getByRole('button', { name: '+', exact: true });
   await plus.click();
   await expect(counter).toHaveText('1');
@@ -177,7 +186,6 @@ test('edits to app.py and the template apply without losing data', async ({ page
 });
 
 test('frontend edits are bundled in the browser and keep data', async ({ page }) => {
-  page.on('dialog', dialog => dialog.accept());
   await ready(page);
   const frame = page.frameLocator('#preview');
   const counter = frame.getByRole('status', { name: 'Counter value' });
@@ -222,7 +230,7 @@ test('frontend edits are bundled in the browser and keep data', async ({ page })
   await expect(heading).toHaveCSS('color', 'rgb(200, 0, 0)');
 
   // Reset to starter goes back to the starter's own build.
-  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await confirmAction(page, 'Reset to starter', 'Discard edits');
   await expect(page.locator('#status')).toHaveText('Starter files restored');
   await expect(heading).toHaveText('Counter');
   expect(await previewVersion(page)).toBe(starterVersion);
@@ -281,7 +289,6 @@ test('errors in the running preview show in the shell', async ({ page }) => {
 
 test('frontend applies retry a failed esbuild load and land in order', async ({ page, browserName }) => {
   test.skip(browserName === 'webkit', "Playwright's WebKit can't intercept a Web Worker's requests");
-  page.on('dialog', dialog => dialog.accept());
   // The first esbuild download fails; the next one is slow.
   let downloads = 0;
   await page.route(/esbuild[^/]*\.wasm/, async route => {
@@ -302,7 +309,7 @@ test('frontend applies retry a failed esbuild load and land in order', async ({ 
   // let the slower edited bundle land after the starter.
   await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>Second edit</h1>'));
   await page.keyboard.press('ControlOrMeta+s');
-  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await confirmAction(page, 'Reset to starter', 'Discard edits');
   await expect(page.locator('#status')).toHaveText('Starter files restored', { timeout: 30_000 });
   expect(downloads).toBe(2);
   await page.waitForTimeout(3_000); // Longer than the slow download, so a stale bundle would have landed.
@@ -313,7 +320,6 @@ test('frontend applies retry a failed esbuild load and land in order', async ({ 
 
 test('dependency edits install by restarting Python, without losing data', async ({ page, context, browserName }) => {
   test.skip(browserName === 'webkit', "Playwright's WebKit can't intercept a Web Worker's requests");
-  page.on('dialog', dialog => dialog.accept());
   // Slow down the new package, so the new worker has loaded /data well before it is ready.
   let wheelRequested!: () => void;
   const installing = new Promise<void>(resolve => (wheelRequested = resolve));
@@ -327,23 +333,26 @@ test('dependency edits install by restarting Python, without losing data', async
   const counter = frame.getByRole('status', { name: 'Counter value' });
   const plus = frame.getByRole('button', { name: '+', exact: true });
   const restart = page.getByRole('button', { name: 'Restart Python' });
+  // The sidebar's notice that pyproject.toml differs from what Python installed.
+  const depsNotice = page.locator('#deps-changed');
   await plus.click();
   await expect(counter).toHaveText('1');
 
   // A pyproject.toml edit waits for a restart instead of applying on a pause.
   await replaceFile(page, 'pyproject.toml', withDependency('humanize==4.17.0'));
-  await expect(restart).toBeVisible();
+  await expect(depsNotice).toBeVisible();
   await page.waitForTimeout(1_000); // Past the edit debounce.
   await expect(page.locator('#status')).toHaveText('Ready');
 
   // The old worker serves while the new one installs; its writes carry over.
   await restart.click();
   await expect(page.locator('#status')).toHaveText('Installing dependencies...');
+  await expect(page.getByRole('button', { name: 'Reset to starter' })).toBeDisabled();
   await installing;
   await plus.click();
   await expect(counter).toHaveText('2');
   await expect(page.locator('#status')).toHaveText('Python restarted', { timeout: 120_000 });
-  await expect(restart).toBeHidden();
+  await expect(depsNotice).toBeHidden();
   await expect(counter).toHaveText('2');
 
   // The new package imports in app.py, also after a full reload.
@@ -354,7 +363,7 @@ test('dependency edits install by restarting Python, without losing data', async
   expect(await healthStatus(page)).toBe('1,234,567');
   await page.reload();
   await expect(page.locator('#status')).toHaveText('Ready', { timeout: 120_000 });
-  await expect(restart).toBeHidden();
+  await expect(depsNotice).toBeHidden();
   expect(await healthStatus(page)).toBe('1,234,567');
 
   // A dependency that fails to install leaves the running version serving.
@@ -362,15 +371,15 @@ test('dependency edits install by restarting Python, without losing data', async
   await restart.click();
   await expect(page.getByRole('alert')).toContainText('no-such-package-for-play', { timeout: 120_000 });
   await expect(page.locator('#status')).toHaveText('Not applied: the previous version is still running');
-  await expect(restart).toBeVisible();
+  await expect(depsNotice).toBeVisible();
   await plus.click();
   await expect(counter).toHaveText('3');
   expect(await healthStatus(page)).toBe('1,234,567');
 
   // Reset to starter restarts with the starter's dependencies and keeps the data.
-  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await confirmAction(page, 'Reset to starter', 'Discard edits');
   await expect(page.locator('#status')).toHaveText('Starter files restored', { timeout: 120_000 });
-  await expect(restart).toBeHidden();
+  await expect(depsNotice).toBeHidden();
   await expect(page.getByRole('alert')).toBeHidden();
   await expect(counter).toHaveText('3');
   expect(await healthStatus(page)).toBe('ok');
@@ -383,13 +392,12 @@ test('saved dependencies that fail to install fall back to the starter\'s', asyn
   await ready(page);
   await expect(page.getByRole('alert')).toContainText('Your pyproject.toml failed to install');
   await expect(page.getByRole('alert')).toContainText('no-such-package-for-play');
-  await expect(page.getByRole('button', { name: 'Restart Python' })).toBeVisible();
-  await page.getByRole('tab', { name: 'pyproject.toml' }).click();
+  await expect(page.locator('#deps-changed')).toBeVisible();
+  await fileButton(page, 'pyproject.toml').click();
   await expect(editorCode(page)).toContainText('no-such-package-for-play');
 });
 
 test('edits are saved across reloads; reset and clear data are separate', async ({ page }) => {
-  page.on('dialog', dialog => dialog.accept());
   await ready(page);
   const frame = page.frameLocator('#preview');
   const counter = frame.getByRole('status', { name: 'Counter value' });
@@ -409,7 +417,7 @@ test('edits are saved across reloads; reset and clear data are separate', async 
   await expect(counter).toHaveText('20');
 
   // Clear data resets the count and keeps the code.
-  await page.getByRole('button', { name: 'Clear data' }).click();
+  await confirmAction(page, 'Clear data', 'Delete data');
   await expect(page.locator('#status')).toHaveText('Data cleared');
   await expect(counter).toHaveText('0');
   await expect(code).toContainText('value = value + 10');
@@ -417,7 +425,7 @@ test('edits are saved across reloads; reset and clear data are separate', async 
   await expect(counter).toHaveText('10');
 
   // Reset to starter restores the code and keeps the count, also after a reload.
-  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await confirmAction(page, 'Reset to starter', 'Discard edits');
   await expect(page.locator('#status')).toHaveText('Starter files restored');
   await expect(code).not.toContainText('value + 10');
   await plus.click();
@@ -513,7 +521,7 @@ test('a second tab waits instead of sharing or answering for the active runtime'
   await expect(second.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('2');
   await expect.poll(() => second.evaluate(() => (document.querySelector('#preview') as HTMLIFrameElement).contentDocument?.title))
     .toBe('Handed over');
-  await second.getByRole('tab', { name: 'templates/app.html' }).click();
+  await fileButton(second, 'templates/app.html').click();
   await expect(editorCode(second)).toContainText('<title>Handed over</title>');
 });
 
@@ -554,7 +562,10 @@ test('a hard reload, which skips the Service Worker, still starts the playground
   test.skip(browserName !== 'chromium', 'A cache-bypassing reload needs the Chrome DevTools Protocol');
   await ready(page);
   const cdp = await page.context().newCDPSession(page);
+  // Page.reload returns before the old page unloads, and its status is Ready too.
+  const reloaded = page.waitForEvent('framenavigated', frame => frame === page.mainFrame());
   await cdp.send('Page.reload', { ignoreCache: true });
+  await reloaded;
   await expect(page.locator('#status')).toHaveText(/^(Ready|Failed to initialize:.*)$/s, { timeout: 120_000 });
   await expect(page.locator('#status')).toHaveText('Ready');
   await expect(page.frameLocator('#preview').getByRole('status', { name: 'Counter value' })).toHaveText('0');

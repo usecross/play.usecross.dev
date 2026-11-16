@@ -1,7 +1,7 @@
 /**
  * Code view of the starter's files. Editable files become writable once the
  * shell calls setEditable(true), after Python is ready. Loaded lazily by
- * main.ts so CodeMirror never delays the Python runtime.
+ * runtime.ts so CodeMirror never delays the Python runtime.
  */
 import { basicSetup } from 'codemirror';
 import { Compartment, EditorState, type Extension } from '@codemirror/state';
@@ -31,16 +31,6 @@ export interface EditorOptions {
 }
 
 export function mountEditor(container: HTMLElement, files: Record<string, string>, options: EditorOptions) {
-  const tabs = document.createElement('div');
-  tabs.className = 'file-tabs';
-  tabs.setAttribute('role', 'tablist');
-  tabs.setAttribute('aria-label', 'Starter files');
-
-  const panel = document.createElement('div');
-  panel.className = 'code';
-  panel.id = 'code-panel';
-  panel.setAttribute('role', 'tabpanel');
-
   let enabled = false;
   const access = new Compartment();
   const readOnly = (path: string) => EditorState.readOnly.of(!(enabled && options.editable.includes(path)));
@@ -60,52 +50,18 @@ export function mountEditor(container: HTMLElement, files: Record<string, string
     ],
   });
   const states = new Map(Object.entries(files).map(([path, doc]) => [path, createState(path, doc)]));
-  const [first] = states.keys();
-  const view = new EditorView({ state: states.get(first)!, parent: panel });
-  let current = first;
-
-  const buttons = [...states.keys()].map(path => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = path;
-    if (!options.editable.includes(path)) button.title = 'Read-only for now';
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-controls', panel.id);
-    button.addEventListener('click', () => select(path));
-    tabs.append(button);
-    return button;
-  });
-
-  function select(path: string) {
-    states.set(current, view.state);
-    current = path;
-    view.setState(states.get(path)!);
-    view.dispatch({ effects: access.reconfigure(readOnly(path)) });
-    buttons.forEach(button => {
-      const selected = button.textContent === path;
-      button.setAttribute('aria-selected', String(selected));
-      button.tabIndex = selected ? 0 : -1;
-      if (selected) button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    });
-    panel.setAttribute('aria-label', path);
-  }
-
-  // Arrow keys move between tabs, as in the WAI-ARIA tabs pattern.
-  tabs.addEventListener('keydown', event => {
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
-    if (!step) return;
-    const index = buttons.indexOf(event.target as HTMLButtonElement);
-    if (index < 0) return;
-    event.preventDefault();
-    const next = buttons[(index + step + buttons.length) % buttons.length];
-    select(next.textContent!);
-    next.focus();
-  });
-
-  select(first);
-  container.replaceChildren(tabs, panel);
+  let current = states.keys().next().value!;
+  const view = new EditorView({ state: states.get(current)!, parent: container });
 
   return {
+    /** Show a file; the shell's sidebar picks it. */
+    show(path: string) {
+      if (path === current) return;
+      states.set(current, view.state);
+      current = path;
+      view.setState(states.get(path)!);
+      view.dispatch({ effects: access.reconfigure(readOnly(path)) });
+    },
     /** Replace files' contents, such as saved edits or the starter's, without reporting them as edits. */
     setFiles(contents: Record<string, string>) {
       for (const [path, doc] of Object.entries(contents)) states.set(path, createState(path, doc));

@@ -80,6 +80,9 @@ CI runs the native regression test and both browser configurations. Tests that i
 
 ```text
 apps/shell/                      Vite shell, SW entry, preview host
+  src/App.tsx                    React + shadcn/ui layout: file sidebar, editor, preview
+  src/runtime.ts                 Starts Python, applies edits, exposes state to the UI
+  src/editor.ts                  CodeMirror 6 editor, loaded lazily
 packages/runner/
   sw.ts                          Browser fetch interception and virtual cookies
   python-worker.ts               Pyodide installation, VFS, serialized requests

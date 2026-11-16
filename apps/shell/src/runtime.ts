@@ -1,19 +1,58 @@
 /**
- * CrossInertia Playground Shell
- * Registers the Service Worker, starts Python and sets up the preview.
+ * The playground's runtime: registers the Service Worker, starts Python,
+ * applies edits and answers preview requests. It keeps what the page shows in
+ * one state object, which the React shell (App.tsx) renders.
  */
 
 import { STARTER_DIR, counterFiles, counterSources, editableSources, starterBuildFiles } from '@play.usecross.dev/runner/counter-files';
 
-// Status display
-const statusEl = document.getElementById('status') as HTMLElement;
-const previewFrame = document.getElementById('preview') as HTMLIFrameElement;
-const reloadBtn = document.getElementById('reload-btn') as HTMLButtonElement;
-const resetStarterBtn = document.getElementById('reset-starter-btn') as HTMLButtonElement;
-const clearDataBtn = document.getElementById('clear-data-btn') as HTMLButtonElement;
-const starterChangedEl = document.getElementById('starter-changed') as HTMLElement;
-const depsChangedEl = document.getElementById('deps-changed') as HTMLElement;
-const restartPythonBtn = document.getElementById('restart-python-btn') as HTMLButtonElement;
+export interface ShellState {
+  /** One line on what the runtime is doing, such as "Ready". */
+  status: string;
+  /** Python serves the preview, and edits and actions are enabled. */
+  ready: boolean;
+  /** An apply's traceback or bundle error, or an error from the running preview. */
+  error: { message: string; source: 'apply' | 'preview' } | null;
+  /** Saved edits were made against an older starter. */
+  starterChanged: boolean;
+  /** pyproject.toml differs from what the running Python installed. */
+  depsChanged: boolean;
+  /** Python is restarting with new dependencies. */
+  restarting: boolean;
+  /** Files with saved edits, by path inside the project. */
+  editedFiles: string[];
+  /** The file the editor shows. */
+  selectedFile: string;
+  /** The preview's path inside the app, such as /counter. */
+  previewPath: string;
+  editorFailed: boolean;
+}
+
+let state: ShellState = {
+  status: 'Initializing...',
+  ready: false,
+  error: null,
+  starterChanged: false,
+  depsChanged: false,
+  restarting: false,
+  editedFiles: [],
+  selectedFile: editableSources[0],
+  previewPath: '',
+  editorFailed: false,
+};
+const listeners = new Set<() => void>();
+export const getState = () => state;
+export function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+function update(changes: Partial<ShellState>) {
+  state = { ...state, ...changes };
+  listeners.forEach(listener => listener());
+}
+
+let previewFrame!: HTMLIFrameElement;
+let editor: Promise<Awaited<ReturnType<typeof import('./editor').mountEditor>> | null> = Promise.resolve(null);
 
 let pythonWorker: Worker | null = null;
 // The pyproject.toml the running worker installed.
@@ -23,7 +62,7 @@ let takeover: Promise<void> = Promise.resolve();
 
 function updateStatus(message: string) {
   console.log('[Shell]', message);
-  statusEl.textContent = message;
+  update({ status: message });
 }
 
 /**
@@ -212,12 +251,12 @@ async function initialize() {
 
     // Run saved edits before the preview first loads.
     await restoreSavedEdits();
-    if (installError && applyErrorEl.hidden) showError(installError);
+    if (installError && !state.error) showError(installError);
     updateDepsNotice();
 
     // Keep the frame blank until BOTH the SW and Python app are ready.
     previewFrame.src = '/preview/';
-    for (const button of [reloadBtn, resetStarterBtn, clearDataBtn, restartPythonBtn]) button.disabled = false;
+    update({ ready: true });
     (await editor)?.setEditable(true);
   } catch (error) {
     pythonWorker?.terminate();
@@ -227,39 +266,72 @@ async function initialize() {
   }
 }
 
-// Reload button
-reloadBtn.addEventListener('click', () => {
+export function reloadPreview() {
   previewFrame.src = '/preview/';
-});
+}
 
-// Whether the error box shows an error from the running preview, not an apply.
-let previewErrorShown = false;
-
-// Listen for preview messages
-window.addEventListener('message', (event) => {
+// Messages from the Service Worker's reporter in the preview page.
+function onPreviewMessage(event: MessageEvent) {
   // Only process messages from the preview iframe
   if (event.source !== previewFrame.contentWindow) {
     return;
   }
-  
-  // The Service Worker's injected reporter: a new page starts, or it threw.
+
+  // A new page starts, or it threw.
   if (event.data.type === 'preview:start') {
     // Only the preview's own error clears; an apply error stays until the next apply.
-    if (previewErrorShown) {
-      applyErrorEl.hidden = true;
+    if (state.error?.source === 'preview') {
+      update({ error: null });
       updateStatus('Ready');
     }
-    previewErrorShown = false;
-  } else if (event.data.type === 'preview:error' && !previewErrorShown && applyErrorEl.hidden) {
+  } else if (event.data.type === 'preview:error' && !state.error) {
     // The first error is usually the cause; later ones follow from it.
-    previewErrorShown = true;
-    showError(`Error in the preview:\n${event.data.error}`);
+    showError(`Error in the preview:\n${event.data.error}`, 'preview');
     updateStatus('The preview has an error');
   }
-});
+}
 
-// Start initialization
-initialize();
+let started = false;
+
+/** Start the playground in this page, with the elements the shell rendered. */
+export function start(elements: { preview: HTMLIFrameElement; editor: HTMLElement }) {
+  if (started) return;
+  started = true;
+  previewFrame = elements.preview;
+  window.addEventListener('message', onPreviewMessage);
+  // The address bar follows the preview, including Inertia's client-side visits.
+  previewFrame.addEventListener('load', () => {
+    const win = previewFrame.contentWindow;
+    const path = () => update({ previewPath: (win?.location.pathname ?? '').replace(/^\/preview/, '') || '/' });
+    if (!win || win.location.href === 'about:blank') return;
+    path();
+    win.addEventListener('popstate', path);
+    // Inertia visits use history.pushState, which fires no event.
+    for (const method of ['pushState', 'replaceState'] as const) {
+      const original = win.history[method].bind(win.history);
+      win.history[method] = (...args: Parameters<History['pushState']>) => { original(...args); path(); };
+    }
+  });
+  // The editor loads in its own chunk, so it never delays Python.
+  editor = import('./editor')
+    .then(({ mountEditor }) => mountEditor(elements.editor, counterSources, {
+      editable: editableSources,
+      onChange: editChanged,
+      onSave: applyEdits,
+    }))
+    .catch(error => {
+      console.error('[Shell] Editor failed to load:', error);
+      update({ editorFailed: true });
+      return null;
+    });
+  refreshEditedFiles();
+  initialize();
+}
+
+export async function selectFile(path: string) {
+  update({ selectedFile: path });
+  (await editor)?.show(path);
+}
 
 // Edits are saved in localStorage with a fingerprint of the starter they
 // were made against, so a deploy that changes the starter can be noticed.
@@ -288,6 +360,12 @@ function saveEdit(path: string, content: string) {
   else saved.files[path] = content;
   if (Object.keys(saved.files).length) localStorage.setItem(SAVED_EDITS, JSON.stringify(saved));
   else localStorage.removeItem(SAVED_EDITS);
+  refreshEditedFiles();
+}
+
+function refreshEditedFiles() {
+  const edited = Object.keys(loadEdits()?.files ?? {}).filter(path => editableSources.includes(path));
+  if (edited.join() !== state.editedFiles.join()) update({ editedFiles: edited });
 }
 
 const vfsPaths = (files: Record<string, string>) =>
@@ -305,24 +383,19 @@ function sendToPython(message: object, worker = pythonWorker): Promise<string | 
   });
 }
 
-const applyErrorEl = document.getElementById('apply-error') as HTMLElement;
-
-function showError(error: string) {
-  applyErrorEl.textContent = error;
-  applyErrorEl.hidden = false;
-  applyErrorEl.scrollTop = applyErrorEl.scrollHeight; // The error message is last.
+function showError(message: string, source: 'apply' | 'preview' = 'apply') {
+  update({ error: { message, source } });
 }
 
 /** Show a failed apply's traceback, or reload the preview after a successful one. */
 function showResult(error: string | null, success: string | null) {
-  previewErrorShown = false;
   if (error) {
     showError(error);
     updateStatus('Not applied: the previous version is still running');
   } else {
-    applyErrorEl.hidden = true;
+    update({ error: null });
     // Report success once the new preview has loaded, so it is the version the status describes.
-    if (success) previewFrame.addEventListener('load', () => previewErrorShown || updateStatus(success), { once: true });
+    if (success) previewFrame.addEventListener('load', () => state.error || updateStatus(success), { once: true });
     previewFrame.contentWindow?.location.reload();
   }
 }
@@ -401,14 +474,14 @@ const restartPython = () => queued(async () => {
 });
 
 function updateDepsNotice() {
-  depsChangedEl.hidden = currentFiles()['pyproject.toml'] === runningPyproject;
+  update({ depsChanged: currentFiles()['pyproject.toml'] !== runningPyproject });
 }
 
 async function restoreSavedEdits() {
   const saved = loadEdits();
   if (!saved) return;
   (await editor)?.setFiles(currentFiles());
-  starterChangedEl.hidden = saved.starter === starterFingerprint;
+  update({ starterChanged: saved.starter !== starterFingerprint });
   showResult(await applyFiles(currentFiles()), null);
 }
 
@@ -432,45 +505,33 @@ async function applyEdits() {
   showResult(await applyFiles(currentFiles()), 'Changes applied');
 }
 
-resetStarterBtn.addEventListener('click', async () => {
-  if (!confirm('Discard your edits and restore the starter files? The app\'s data is kept.')) return;
+/** Discard saved edits and run the starter's files. The app's data is kept. */
+export async function resetToStarter() {
   clearTimeout(applyTimer);
   editsPending = false;
   localStorage.removeItem(SAVED_EDITS);
-  starterChangedEl.hidden = true;
+  update({ starterChanged: false });
+  refreshEditedFiles();
   (await editor)?.setFiles(counterSources);
   updateStatus('Restoring the starter...');
   const restart = runningPyproject !== counterSources['pyproject.toml'];
   showResult(await (restart ? restartPython() : applyFiles(currentFiles())), 'Starter files restored');
   updateDepsNotice();
-});
+}
 
-restartPythonBtn.addEventListener('click', async () => {
+/** Restart Python with the editor's pyproject.toml and other files. */
+export async function restart() {
   clearTimeout(applyTimer);
   editsPending = false;
-  restartPythonBtn.disabled = true;
+  update({ restarting: true });
   updateStatus('Installing dependencies...');
   showResult(await restartPython(), 'Python restarted');
-  restartPythonBtn.disabled = false;
+  update({ restarting: false });
   updateDepsNotice();
-});
+}
 
-clearDataBtn.addEventListener('click', async () => {
-  if (!confirm('Delete the app\'s data, such as the count? Your code edits are kept.')) return;
+/** Delete the app's data, such as the count. Code edits are kept. */
+export async function clearData() {
   updateStatus('Clearing data...');
   showResult(await queued(() => sendToPython({ type: 'clear-data' })), 'Data cleared');
-});
-
-// The editor loads in its own chunk, so it never delays Python.
-const editorEl = document.getElementById('editor') as HTMLElement;
-const editor = import('./editor')
-  .then(({ mountEditor }) => mountEditor(editorEl, counterSources, {
-    editable: editableSources,
-    onChange: editChanged,
-    onSave: applyEdits,
-  }))
-  .catch(error => {
-    console.error('[Shell] Editor failed to load:', error);
-    editorEl.textContent = 'The code view failed to load.';
-    return null;
-  });
+}
