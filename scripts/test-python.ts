@@ -17,7 +17,7 @@ for (const [path, content] of Object.entries((await bundleFrontend(esbuild, sour
 }
 
 const result = Bun.spawnSync([
-  'uv', 'run', '--python', '3.12', '--no-project',
+  'uv', 'run', '--python', '3.13', '--no-project',
   ...starter.project.dependencies.flatMap((dependency: string) => ['--with', dependency]),
   'python', '-m', 'unittest', 'discover', '-s', 'tests/python',
 ], { cwd: root, stdout: 'inherit', stderr: 'inherit' });

@@ -54,7 +54,9 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
   });
 
   pyodide.FS.mkdirTree(DATA_DIR);
-  pyodide.FS.mount(pyodide.FS.filesystems.IDBFS, {}, DATA_DIR);
+  // Pyodide documents FS.filesystems but its types leave it out.
+  const { IDBFS } = (pyodide.FS as unknown as { filesystems: { IDBFS: Parameters<typeof pyodide.FS.mount>[0] } }).filesystems;
+  pyodide.FS.mount(IDBFS, {}, DATA_DIR);
   await syncData(true);
 
   // Load user files into virtual filesystem if provided
@@ -132,11 +134,15 @@ import asgi_bridge
   pyodide.runPython(`
 import cross_inertia
 import os
+import browser_inertia
 os.environ['PLAYGROUND_DATA_DIR'] = '${DATA_DIR}'
+browser_inertia.install()
+# Run the starter from its folder, as \`fastapi run\` would, so CrossInertia's
+# default template and manifest paths find its files.
+os.chdir('/examples/counter')
 sys.path.insert(0, '/examples/counter')
-from app import app, response as inertia_response
-inertia_response.get_manifest()
-inertia_response.templates.get_template('app.html')
+from app import app
+browser_inertia.reload()
 print(f'[Python Worker] CrossInertia {cross_inertia.__version__} loaded from {cross_inertia.__file__}')
   `);
 

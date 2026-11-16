@@ -13,6 +13,19 @@ import json
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse, parse_qs, unquote
 
+import anyio.to_thread
+
+
+async def _run_sync_inline(func, *args, abandon_on_cancel=False, cancellable=None, limiter=None):
+    return func(*args)
+
+
+# Pyodide has no threads. Starlette and FastAPI run sync routes, sync
+# dependencies and file reads in anyio's thread pool; run them inline. The
+# worker handles one request at a time and its files are in memory, so
+# nothing waits on them.
+anyio.to_thread.run_sync = _run_sync_inline
+
 
 async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -138,6 +151,8 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
     import sys
     import traceback
 
+    import browser_inertia
+
     previous = {}
     for path in files:
         try:
@@ -151,10 +166,9 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
             with open(path, 'w') as file:
                 file.write(content)
         importlib.invalidate_caches()
-        app = importlib.import_module('app')
+        importlib.import_module('app')
         # Check what initialization checks: manifest and template load.
-        app.response.get_manifest()
-        app.response.templates.get_template('app.html')
+        browser_inertia.reload()
         return None
     except BaseException as exc:
         # Show only the starter's own frames (Python files and Jinja
