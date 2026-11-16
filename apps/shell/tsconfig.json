@@ -6,7 +6,8 @@
     "moduleResolution": "bundler",
     "types": ["vite/client"],
     "paths": {
-      "@play.usecross.dev/runner/*": ["../../packages/runner/*"]
+      "@play.usecross.dev/runner/*": ["../../packages/runner/*"],
+      "@play.usecross.dev/bundler/*": ["../../packages/bundler/*"]
     },
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,

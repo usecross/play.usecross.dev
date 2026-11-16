@@ -130,16 +130,21 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
 
     Returns None on success. On failure, restores the previous files and app
     module, so the last working version keeps serving, and returns the
-    traceback. The data directory is never touched, so app data survives.
+    traceback. New files, such as a frontend bundle's, are removed again. The
+    data directory is never touched, so app data survives.
     """
     import importlib
+    import os
     import sys
     import traceback
 
     previous = {}
     for path in files:
-        with open(path) as file:
-            previous[path] = file.read()
+        try:
+            with open(path) as file:
+                previous[path] = file.read()
+        except FileNotFoundError:
+            previous[path] = None
     old_app = sys.modules.pop('app', None)
     try:
         for path, content in files.items():
@@ -159,6 +164,9 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
         lines = ['Traceback (most recent call last):\n', *traceback.format_list(frames)] if frames else []
         error = ''.join(lines + traceback.format_exception_only(type(exc), exc))
         for path, content in previous.items():
+            if content is None:
+                os.remove(path)
+                continue
             with open(path, 'w') as file:
                 file.write(content)
         sys.modules.pop('app', None)

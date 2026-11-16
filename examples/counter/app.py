@@ -27,7 +27,7 @@ DATABASE = Path(os.environ.get("PLAYGROUND_DATA_DIR", BASE_DIR)) / "counter.sqli
 response = BrowserInertiaResponse(
     template_dir=str(BASE_DIR / "templates"),
     manifest_path=str(BUILD_DIR / ".vite" / "manifest.json"),
-    vite_entry="frontend/app.js",
+    vite_entry="frontend/app.tsx",
 )
 
 app = FastAPI()
