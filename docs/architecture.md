@@ -271,6 +271,22 @@ trimmed to the starter's own files. Applies and preview requests share one
 serial queue in the worker, and the worker never writes `.pyc` files, so a
 fast re-edit can't load stale bytecode.
 
+**Edits are saved in the browser.** The shell keeps each edited file in
+`localStorage` (key `play.usecross.dev:counter-edits`), with a fingerprint of the
+starter they were made against; a file edited back to the starter is dropped.
+On the next load, the tab that owns the runtime applies the saved files with
+`apply-files` before the preview first loads, so a waiting tab that takes over
+gets the latest edits. If the starter changed in a deploy, the editor shows a
+notice suggesting **Reset to starter**; saved edits that fail to apply show
+their traceback while the starter keeps serving. Edits are small text, so
+`localStorage` is enough; `/data` stays the app's own database.
+
+- **Reset to starter** forgets the saved edits and applies the starter files.
+  The data is kept.
+- **Clear data** sends `clear-data`: the worker deletes everything in `/data`,
+  re-imports the app so it recreates its tables, and syncs IndexedDB. The edits
+  are kept.
+
 ### Phase 2: Django Migrations
 
 ```python
@@ -436,7 +452,7 @@ setTimeout(() => {
 
 ### What Doesn't Work Yet
 ❌ Real asset bundling (CDN/inline only)  
-❌ Editing the frontend and `pyproject.toml`; saving edits across reloads  
+❌ Editing the frontend and `pyproject.toml`  
 ❌ WSGI/Django  
 ❌ WebSocket/SSE  
 ❌ File uploads  
@@ -565,6 +581,7 @@ HTTP-only check of the shell would not exercise the ASGI bridge.
 ### Phase 1: Editor + Persistence
 - [x] Read-only CodeMirror 6 view of the starter's files (`apps/shell/src/editor.ts`, loaded lazily)
 - [x] Editing `app.py` and the template, with a Python reload that keeps `/data`
+- [x] Saving edits in the browser, Reset to starter, and Clear data
 - [x] IDBFS for SQLite persistence
 - [ ] esbuild-wasm for React bundling
 - [x] Hot reload for Python code changes

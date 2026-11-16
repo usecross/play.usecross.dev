@@ -114,6 +114,55 @@
       white-space: pre-wrap;
     }
 
+    .editor-footer {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding-right: 1rem;
+      border-top: 1px solid #ddd;
+      background: #f7f7f7;
+    }
+
+    .editor-footer .editor-note {
+      flex: 1;
+      border-top: none;
+    }
+
+    .starter-changed {
+      flex-shrink: 0;
+      padding: 0.5rem 1rem;
+      border-top: 1px solid #f0c36d;
+      background: #fff8e1;
+      font-size: 0.8125rem;
+      color: #6b4e00;
+    }
+
+    button.secondary,
+    .preview-toolbar button.secondary {
+      padding: 0.45rem 0.8rem;
+      background: #fff;
+      color: #333;
+      border: 1px solid #c4c9d0;
+      border-radius: 4px;
+      font-size: 0.8125rem;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    button.secondary:hover:not(:disabled),
+    .preview-toolbar button.secondary:hover:not(:disabled) {
+      background: #f0f2f5;
+    }
+
+    button.secondary:disabled,
+    .preview-toolbar button.secondary:disabled {
+      background: #fff;
+      color: #a8adb4;
+      border-color: #dde0e4;
+      cursor: not-allowed;
+    }
+
     .editor-note code, .editor-note kbd {
       font: 0.75rem ui-monospace, SFMono-Regular, Menlo, monospace;
     }
@@ -186,16 +235,23 @@
         <p class="editor-note">Loading the starter's files...</p>
       </div>
       <pre id="apply-error" class="apply-error" role="alert" hidden></pre>
-      <p class="editor-note">
-        The FastAPI and CrossInertia app on the right runs in your browser, and its count is saved
-        in your browser. Edit <code>app.py</code> or the template: changes apply when you pause
-        typing or press <kbd>⌘S</kbd>/<kbd>Ctrl+S</kbd>. Edits are not kept when you reload the page yet.
+      <p id="starter-changed" class="starter-changed" role="status" hidden>
+        The starter has changed since you edited it. Reset to starter to get the new version.
       </p>
+      <div class="editor-footer">
+        <p class="editor-note">
+          The FastAPI and CrossInertia app on the right runs in your browser. Edit <code>app.py</code>
+          or the template: changes apply when you pause typing or press <kbd>⌘S</kbd>/<kbd>Ctrl+S</kbd>,
+          and are saved in your browser.
+        </p>
+        <button id="reset-starter-btn" class="secondary" disabled>Reset to starter</button>
+      </div>
     </div>
     
     <div class="preview-panel">
       <div class="preview-toolbar">
         <button id="reload-btn" disabled>Reload Preview</button>
+        <button id="clear-data-btn" class="secondary" disabled>Clear data</button>
         <span class="status" id="status" role="status">Initializing...</span>
       </div>
       <iframe id="preview" src="about:blank" title="Counter preview"></iframe>

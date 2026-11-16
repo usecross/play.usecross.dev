@@ -167,6 +167,20 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
         return error
 
 
+def clear_data(directory: str) -> Optional[str]:
+    """Delete the app's data and re-import it, so it recreates a fresh database."""
+    import os
+    import shutil
+
+    for name in os.listdir(directory):
+        path = os.path.join(directory, name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+    return apply_files({})
+
+
 def _build_asgi_headers(headers: Dict[str, str]) -> List[tuple]:
     """Convert headers dict to ASGI format (list of byte tuples)"""
     asgi_headers = []

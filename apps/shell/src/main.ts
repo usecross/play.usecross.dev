@@ -9,6 +9,9 @@ import { STARTER_DIR, counterFiles, counterSources, editableSources } from '@pla
 const statusEl = document.getElementById('status') as HTMLElement;
 const previewFrame = document.getElementById('preview') as HTMLIFrameElement;
 const reloadBtn = document.getElementById('reload-btn') as HTMLButtonElement;
+const resetStarterBtn = document.getElementById('reset-starter-btn') as HTMLButtonElement;
+const clearDataBtn = document.getElementById('clear-data-btn') as HTMLButtonElement;
+const starterChangedEl = document.getElementById('starter-changed') as HTMLElement;
 
 let pythonWorker: Worker | null = null;
 
@@ -187,10 +190,14 @@ async function initialize() {
     await initPythonWorker();
     answerPreviewRequests(pythonWorker!);
     
+    // Run saved edits before the preview first loads. Read them only now, so a
+    // tab that waited for another one gets that tab's latest edits.
+    await restoreSavedEdits();
+
     // Keep the frame blank until BOTH the SW and Python app are ready.
     previewFrame.src = '/preview/';
-    reloadBtn.disabled = false;
-    editor.then(handle => handle?.setEditable(true));
+    for (const button of [reloadBtn, resetStarterBtn, clearDataBtn]) button.disabled = false;
+    (await editor)?.setEditable(true);
   } catch (error) {
     pythonWorker?.terminate();
     pythonWorker = null;
@@ -222,43 +229,113 @@ window.addEventListener('message', (event) => {
 // Start initialization
 initialize();
 
-// Edits waiting to be applied, by starter path.
-const pendingEdits: Record<string, string> = {};
-let applyTimer: ReturnType<typeof setTimeout> | undefined;
+// Edits are saved in localStorage with a fingerprint of the starter they
+// were made against, so a deploy that changes the starter can be noticed.
+const SAVED_EDITS = 'play.usecross.dev:counter-edits';
+interface SavedEdits { starter: string; files: Record<string, string> }
+
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5; // FNV-1a
+  for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
+  return (hash >>> 0).toString(16);
+}
+const starterFingerprint = fingerprint(JSON.stringify(counterSources));
+
+function loadEdits(): SavedEdits | null {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVED_EDITS) ?? 'null');
+    return saved && typeof saved.files === 'object' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveEdit(path: string, content: string) {
+  const saved = loadEdits() ?? { starter: starterFingerprint, files: {} };
+  if (content === counterSources[path]) delete saved.files[path];
+  else saved.files[path] = content;
+  if (Object.keys(saved.files).length) localStorage.setItem(SAVED_EDITS, JSON.stringify(saved));
+  else localStorage.removeItem(SAVED_EDITS);
+}
+
+const vfsPaths = (files: Record<string, string>) =>
+  Object.fromEntries(Object.entries(files).map(([path, content]) => [`${STARTER_DIR}/${path}`, content]));
+
+/** Send a message to the Python worker and wait for its 'applied' answer. */
+function sendToPython(message: object): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    if (!pythonWorker) return reject(new Error('Python worker not initialized'));
+    const channel = new MessageChannel();
+    channel.port1.onmessage = ({ data }) => {
+      if (data.type === 'applied') resolve(data.error);
+    };
+    pythonWorker.postMessage(message, [channel.port2]);
+  });
+}
+
 const applyErrorEl = document.getElementById('apply-error') as HTMLElement;
 
+/** Show a failed apply's traceback, or reload the preview after a successful one. */
+function showResult(error: string | null, success: string | null) {
+  if (error) {
+    applyErrorEl.textContent = error;
+    applyErrorEl.hidden = false;
+    applyErrorEl.scrollTop = applyErrorEl.scrollHeight; // The error message is last.
+    updateStatus('Not applied: the previous version is still running');
+  } else {
+    applyErrorEl.hidden = true;
+    // Report success once the new preview has loaded, so it is the version the status describes.
+    if (success) previewFrame.addEventListener('load', () => updateStatus(success), { once: true });
+    previewFrame.contentWindow?.location.reload();
+  }
+}
+
+async function restoreSavedEdits() {
+  const saved = loadEdits();
+  if (!saved) return;
+  const files = Object.fromEntries(Object.entries(saved.files).filter(([path]) => editableSources.includes(path)));
+  (await editor)?.setFiles(files);
+  starterChangedEl.hidden = saved.starter === starterFingerprint;
+  showResult(await sendToPython({ type: 'apply-files', files: vfsPaths(files) }), null);
+}
+
+// Edits waiting to be applied, by starter path.
+let pendingEdits: Record<string, string> = {};
+let applyTimer: ReturnType<typeof setTimeout> | undefined;
+
 function editChanged(path: string, content: string) {
+  saveEdit(path, content);
   pendingEdits[path] = content;
   clearTimeout(applyTimer);
   applyTimer = setTimeout(applyEdits, 800);
 }
 
-/** Send pending edits to Python; on success reload the preview, else show the traceback. */
-function applyEdits() {
+async function applyEdits() {
   clearTimeout(applyTimer);
-  const worker = pythonWorker;
-  const paths = Object.keys(pendingEdits);
-  if (!worker || paths.length === 0) return;
-  const files = Object.fromEntries(paths.map(path => [`${STARTER_DIR}/${path}`, pendingEdits[path]]));
-  paths.forEach(path => delete pendingEdits[path]);
-
+  const files = pendingEdits;
+  if (!pythonWorker || Object.keys(files).length === 0) return;
+  pendingEdits = {};
   updateStatus('Applying your changes...');
-  const channel = new MessageChannel();
-  channel.port1.onmessage = ({ data }) => {
-    if (data.type !== 'applied') return;
-    if (data.error) {
-      applyErrorEl.textContent = data.error;
-      applyErrorEl.hidden = false;
-      applyErrorEl.scrollTop = applyErrorEl.scrollHeight; // The error message is last.
-      updateStatus('Not applied: the previous version is still running');
-    } else {
-      applyErrorEl.hidden = true;
-      previewFrame.contentWindow?.location.reload();
-      updateStatus('Changes applied');
-    }
-  };
-  worker.postMessage({ type: 'apply-files', files }, [channel.port2]);
+  showResult(await sendToPython({ type: 'apply-files', files: vfsPaths(files) }), 'Changes applied');
 }
+
+resetStarterBtn.addEventListener('click', async () => {
+  if (!confirm('Discard your edits and restore the starter files? The app\'s data is kept.')) return;
+  clearTimeout(applyTimer);
+  pendingEdits = {};
+  localStorage.removeItem(SAVED_EDITS);
+  starterChangedEl.hidden = true;
+  (await editor)?.setFiles(counterSources);
+  const files = Object.fromEntries(editableSources.map(path => [path, counterSources[path]]));
+  updateStatus('Restoring the starter...');
+  showResult(await sendToPython({ type: 'apply-files', files: vfsPaths(files) }), 'Starter files restored');
+});
+
+clearDataBtn.addEventListener('click', async () => {
+  if (!confirm('Delete the app\'s data, such as the count? Your code edits are kept.')) return;
+  updateStatus('Clearing data...');
+  showResult(await sendToPython({ type: 'clear-data' }), 'Data cleared');
+});
 
 // The editor loads in its own chunk, so it never delays Python.
 const editorEl = document.getElementById('editor') as HTMLElement;
