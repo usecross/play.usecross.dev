@@ -230,6 +230,37 @@ test('frontend edits are bundled in the browser and keep data', async ({ page })
   await expect(counter).toHaveText('1');
 });
 
+test('frontend applies retry a failed esbuild load and land in order', async ({ page }) => {
+  page.on('dialog', dialog => dialog.accept());
+  // The first esbuild download fails; the next one is slow.
+  let downloads = 0;
+  await page.route(/esbuild[^/]*\.wasm/, async route => {
+    if (route.request().resourceType() !== 'fetch') return route.continue(); // Vite's dev module for the URL
+    if (++downloads === 1) return route.abort();
+    await new Promise(resolve => setTimeout(resolve, 2_000));
+    await route.continue();
+  });
+  await ready(page);
+  const heading = page.frameLocator('#preview').getByRole('heading', { level: 1 });
+
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>My counter</h1>'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await expect(page.locator('#status')).toHaveText('Not applied: the previous version is still running');
+  await expect(page.getByRole('alert')).toBeVisible();
+
+  // The next edit downloads esbuild again. Resetting while it does must not
+  // let the slower edited bundle land after the starter.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>Second edit</h1>'));
+  await page.keyboard.press('ControlOrMeta+s');
+  await page.getByRole('button', { name: 'Reset to starter' }).click();
+  await expect(page.locator('#status')).toHaveText('Starter files restored', { timeout: 30_000 });
+  expect(downloads).toBe(2);
+  await page.waitForTimeout(3_000); // Longer than the slow download, so a stale bundle would have landed.
+  await expect(page.locator('#status')).toHaveText('Starter files restored');
+  await expect(heading).toHaveText('Counter');
+  await expect(page.getByRole('alert')).toBeHidden();
+});
+
 test('edits are saved across reloads; reset and clear data are separate', async ({ page }) => {
   page.on('dialog', dialog => dialog.accept());
   await ready(page);

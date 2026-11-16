@@ -165,7 +165,9 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
         error = ''.join(lines + traceback.format_exception_only(type(exc), exc))
         for path, content in previous.items():
             if content is None:
-                os.remove(path)
+                # A new file; the write that failed may have come before it.
+                if os.path.exists(path):
+                    os.remove(path)
                 continue
             with open(path, 'w') as file:
                 file.write(content)
