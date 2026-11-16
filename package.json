@@ -15,7 +15,7 @@
     "test:production": "playwright test --config playwright.production.config.ts",
     "test:python": "bun scripts/test-python.ts",
     "typecheck": "tsc --noEmit -p packages/runner/tsconfig.json && tsc --noEmit -p apps/shell/tsconfig.json",
-    "test:install": "npx playwright install --with-deps chromium"
+    "test:install": "npx playwright install --with-deps chromium webkit"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.0",
