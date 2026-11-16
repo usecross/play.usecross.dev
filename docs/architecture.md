@@ -292,6 +292,16 @@ trimmed to the starter's own files. Applies and preview requests share one
 serial queue in the worker, and the worker never writes `.pyc` files, so a
 fast re-edit can't load stale bytecode.
 
+**Errors in the running preview show in the shell.** Code can bundle and
+import fine and still fail in the browser. The Service Worker adds one inline
+script to the start of `<head>` in every preview HTML response
+(`packages/runner/preview-errors.ts`), the way Vite's dev server injects its
+client; it must run before the page's own scripts, which a listener from the
+shell can't. It posts the page's uncaught errors, unhandled rejections, and
+failed script or stylesheet loads to the shell, which shows the first one
+under the editor with the bundle's own stack frames. A new preview page clears
+it. The Python app's response is otherwise unchanged.
+
 **Dependency edits restart Python.** Python can't unload a package, so a
 `pyproject.toml` edit doesn't apply on a pause. The shell shows **Restart
 Python**, which starts a new worker with the edited `pyproject.toml` and the

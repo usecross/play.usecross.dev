@@ -229,6 +229,9 @@ reloadBtn.addEventListener('click', () => {
   previewFrame.src = '/preview/';
 });
 
+// Whether the error box shows an error from the running preview, not an apply.
+let previewErrorShown = false;
+
 // Listen for preview messages
 window.addEventListener('message', (event) => {
   // Only process messages from the preview iframe
@@ -236,11 +239,19 @@ window.addEventListener('message', (event) => {
     return;
   }
   
-  if (event.data.type === 'preview:ready') {
-    updateStatus('Preview ready');
-  } else if (event.data.type === 'preview:error') {
-    updateStatus('Error: ' + event.data.error);
-    console.error('[Shell] Preview error:', event.data.error);
+  // The Service Worker's injected reporter: a new page starts, or it threw.
+  if (event.data.type === 'preview:start') {
+    // Only the preview's own error clears; an apply error stays until the next apply.
+    if (previewErrorShown) {
+      applyErrorEl.hidden = true;
+      updateStatus('Ready');
+    }
+    previewErrorShown = false;
+  } else if (event.data.type === 'preview:error' && !previewErrorShown && applyErrorEl.hidden) {
+    // The first error is usually the cause; later ones follow from it.
+    previewErrorShown = true;
+    showError(`Error in the preview:\n${event.data.error}`);
+    updateStatus('The preview has an error');
   }
 });
 
@@ -301,13 +312,14 @@ function showError(error: string) {
 
 /** Show a failed apply's traceback, or reload the preview after a successful one. */
 function showResult(error: string | null, success: string | null) {
+  previewErrorShown = false;
   if (error) {
     showError(error);
     updateStatus('Not applied: the previous version is still running');
   } else {
     applyErrorEl.hidden = true;
     // Report success once the new preview has loaded, so it is the version the status describes.
-    if (success) previewFrame.addEventListener('load', () => updateStatus(success), { once: true });
+    if (success) previewFrame.addEventListener('load', () => previewErrorShown || updateStatus(success), { once: true });
     previewFrame.contentWindow?.location.reload();
   }
 }

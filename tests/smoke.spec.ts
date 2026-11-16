@@ -229,6 +229,56 @@ test('frontend edits are bundled in the browser and keep data', async ({ page })
   await expect(counter).toHaveText('1');
 });
 
+test('errors in the running preview show in the shell', async ({ page }) => {
+  await ready(page);
+  const alert = page.getByRole('alert');
+  const heading = page.frameLocator('#preview').getByRole('heading', { level: 1 });
+
+  // A render error bundles fine, then throws in the browser.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>{missingName}</h1>'));
+  await expect(page.locator('#status')).toHaveText('The preview has an error', { timeout: 30_000 });
+  await expect(alert).toContainText('Error in the preview:');
+  await expect(alert).toContainText('ReferenceError');
+  await expect(alert).toContainText('missingName');
+  // Frames point at the bundle without the origin or the /preview mount.
+  await expect(alert).toContainText(/assets\/app-\w+\.js:\d+/);
+  await expect(alert).not.toContainText('/preview/');
+
+  // Fixing it clears the error.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace('<h1>Counter</h1>', '<h1>Fixed</h1>'));
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(heading).toHaveText('Fixed');
+  await expect(alert).toBeHidden();
+
+  // A package the template's import map doesn't provide fails when the page loads it.
+  await replaceFile(page, 'frontend/app.tsx', "import confetti from 'canvas-confetti';\nconfetti();\n" + starterTsx);
+  await expect(alert).toContainText('canvas-confetti', { timeout: 30_000 });
+  await expect(page.locator('#status')).toHaveText('The preview has an error');
+
+  // A reload of a working page clears it too.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx);
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  await expect(alert).toBeHidden();
+
+  // An error in a click handler shows; reloading only the preview clears it and the status.
+  await replaceFile(page, 'frontend/app.tsx', starterTsx.replace(
+    "onClick={() => submit('reset')}>Reset</button>", "onClick={() => { throw new Error('Reset broke'); }}>Break</button>"));
+  await page.frameLocator('#preview').getByRole('button', { name: 'Break' }).click();
+  await expect(alert).toContainText('Error: Reset broke');
+  await expect(page.locator('#status')).toHaveText('The preview has an error');
+  await page.getByRole('button', { name: 'Reload Preview' }).click();
+  await expect(alert).toBeHidden();
+  await expect(page.locator('#status')).toHaveText('Ready');
+
+  // The reporter runs after a doctype and before the page's scripts, and skips a
+  // <head> inside a comment.
+  await replaceFile(page, 'templates/app.html', starterTemplate.replace('<head>', '<!-- <head> in a comment --><head>'));
+  await expect(page.locator('#status')).toHaveText('Changes applied');
+  const html = await page.evaluate(() => fetch('/preview/counter').then(r => r.text()));
+  expect(html).toMatch(/^<!DOCTYPE html>\s*<html lang="en">\s*<!-- <head> in a comment --><head><script>\(/); // The function's name is minified in production.
+  expect(await page.evaluate(() => (document.querySelector('#preview') as HTMLIFrameElement).contentDocument!.compatMode)).toBe('CSS1Compat');
+});
+
 test('frontend applies retry a failed esbuild load and land in order', async ({ page }) => {
   page.on('dialog', dialog => dialog.accept());
   // The first esbuild download fails; the next one is slow.

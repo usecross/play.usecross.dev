@@ -16,6 +16,7 @@
 
 import type { HttpRequest, HttpResponse } from './types';
 import { CookieJarImpl } from './cookie-jar';
+import { reportPreviewErrors } from './preview-errors';
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -76,6 +77,21 @@ async function sendToPython(request: HttpRequest): Promise<HttpResponse> {
       }
     }, 30000);
   });
+}
+
+/** Run reportPreviewErrors before the page's own scripts, at the start of <head>. */
+function withErrorReporter(body: Uint8Array): Uint8Array<ArrayBuffer> {
+  const html = new TextDecoder().decode(body);
+  const script = `<script>(${reportPreviewErrors})()</script>`;
+  // After the first <head> tag outside a comment; without one, after the doctype,
+  // since anything before it would put the page in quirks mode.
+  let at = /^\s*<!doctype[^>]*>/i.exec(html)?.[0].length ?? 0;
+  for (const match of html.matchAll(/<!--[\s\S]*?-->|<head\b[^>]*>/gi)) {
+    if (match[0].startsWith('<!--')) continue;
+    at = match.index + match[0].length;
+    break;
+  }
+  return new TextEncoder().encode(html.slice(0, at) + script + html.slice(at));
 }
 
 self.addEventListener('install', (event) => {
@@ -161,8 +177,13 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     Object.entries(response.headers).forEach(([key, value]) => {
       responseHeaders.append(key, value);
     });
+    let responseBody: Uint8Array<ArrayBuffer> | null = response.body ? new Uint8Array(response.body) : null;
+    if (responseBody && responseHeaders.get('content-type')?.startsWith('text/html')) {
+      responseBody = withErrorReporter(responseBody);
+      responseHeaders.delete('content-length');
+    }
     
-    return new Response(response.body ? new Uint8Array(response.body).buffer : null, {
+    return new Response(responseBody?.buffer ?? null, {
       status: response.status,
       statusText: response.statusText,
       headers: responseHeaders,
