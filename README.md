@@ -26,6 +26,7 @@ See [the milestone notes](./docs/real-cross-inertia.md) for evidence, constraint
 - One tab runs Python at a time; another tab waits and takes over with the saved data
 - Editing every starter file: `app.py` and the modules it imports, such as `db.py`, the template, and the React frontend. Frontend edits are bundled in the browser with esbuild-wasm, and a new bundle changes the Inertia asset version
 - Editing dependencies in `pyproject.toml`: **Restart Python** installs them in a new worker while the old one keeps serving, then switches with the data kept; a failed install leaves the old one running
+- A **Network** panel under the preview lists every request the app answers, labelled by what it is in Inertia's protocol (document, Inertia visit, partial reload, redirect, version conflict, asset), with its headers, payload, response and page object: which props came back, which are shared, deferred or left out of a partial reload
 - Errors thrown in the running preview, such as a render error or an import the import map doesn't provide, show under the editor
 - Edits are saved in the browser and restored on reload; **Reset to starter** discards them and **Clear data** empties the database, each without touching the other
 
