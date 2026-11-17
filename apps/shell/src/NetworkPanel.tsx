@@ -211,15 +211,20 @@ export function NetworkPanel({ entries }: { entries: NetworkEntry[] }) {
 
 function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entries: NetworkEntry[]; onClose: () => void }) {
   const page = useMemo(() => pageObject(entry), [entry]);
-  // A partial reload's props merge into the last full page of the same component.
-  const previous = useMemo(() => {
+  // A partial reload's props merge into what the client has: the last full
+  // page of the same component, and the partial reloads after it.
+  const known = useMemo(() => {
     if (kind(entry) !== 'Partial' || !page) return null;
+    const names = new Set<string>();
     for (const earlier of entries.filter(e => e.id < entry.id).reverse()) {
-      if (kind(earlier) !== 'Inertia' && kind(earlier) !== 'Document') continue;
+      const k = kind(earlier);
+      if (k !== 'Inertia' && k !== 'Document' && k !== 'Partial') continue;
       const other = pageObject(earlier);
-      if (other?.component === page.component) return other;
+      if (!other || other.component !== page.component) break;
+      Object.keys(other.props ?? {}).forEach(name => names.add(name));
+      if (k !== 'Partial') break;
     }
-    return null;
+    return names;
   }, [entry, entries, page]);
   const query = [...new URLSearchParams(entry.path.split('?')[1] ?? '')];
   const hasPayload = query.length > 0 || entry.requestBody !== null;
@@ -245,7 +250,7 @@ function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entri
           <TabsTrigger value="response" className="text-xs">Response</TabsTrigger>
         </TabsList>
         <div className="min-h-0 flex-1 overflow-auto border-t p-3 text-xs">
-          {page && <TabsContent value="page"><PageView entry={entry} page={page} previous={previous} /></TabsContent>}
+          {page && <TabsContent value="page"><PageView entry={entry} page={page} known={known} /></TabsContent>}
           <TabsContent value="headers" className="grid grid-cols-1 gap-3">
             <HeaderList title="General" headers={{ 'Request URL': `/preview${entry.path}`, 'Request method': entry.method, Status: String(entry.status || 'failed') }} />
             <HeaderList title="Response headers" headers={entry.responseHeaders} />
@@ -253,7 +258,7 @@ function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entri
           </TabsContent>
           {hasPayload && (
             <TabsContent value="payload" className="grid grid-cols-1 gap-3">
-              {query.length > 0 && <HeaderList title="Query string" headers={Object.fromEntries(query)} />}
+              {query.length > 0 && <HeaderList title="Query string" headers={query} />}
               {entry.requestBody !== null && (
                 <div>
                   <h3 className="mb-1 font-medium">Request body</h3>
@@ -274,14 +279,13 @@ function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entri
 }
 
 /** The Inertia page object, with each prop labelled by how it got there. */
-function PageView({ entry, page, previous }: { entry: NetworkEntry; page: Record<string, any>; previous: Record<string, any> | null }) {
+function PageView({ entry, page, known }: { entry: NetworkEntry; page: Record<string, any>; known: Set<string> | null }) {
   const shared = new Set<string>(page.sharedProps ?? []);
   const deferred = Object.entries<string[]>(page.deferredProps ?? {}).flatMap(([group, props]) => props.map(prop => [prop, group]));
   const requested = list(header(entry, 'x-inertia-partial-data'));
-  // Props a partial reload left out: the last full page's, or after a Clear,
-  // at least the shared ones the page object names.
-  const known = previous ? Object.keys(previous.props ?? {}) : kind(entry) === 'Partial' ? [...shared] : [];
-  const kept = known.filter(name => !(name in (page.props ?? {})));
+  // Props a partial reload left out. After a Clear the history is gone, but
+  // the page object still names the shared ones.
+  const kept = known ? [...new Set([...known, ...shared])].filter(name => !(name in (page.props ?? {}))) : [];
   return (
     <div className="grid grid-cols-1 gap-3">
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
@@ -327,17 +331,18 @@ function Badge({ children, title }: { children: ReactNode; title: string }) {
   return <span title={title} className="rounded bg-muted px-1 text-[0.7rem] text-muted-foreground">{children}</span>;
 }
 
-function HeaderList({ title, headers }: { title: string; headers: Record<string, string> }) {
-  const entries = Object.entries(headers);
+/** Name and value pairs; a list keeps a query string's repeated names. */
+function HeaderList({ title, headers }: { title: string; headers: Record<string, string> | [string, string][] }) {
+  const entries = Array.isArray(headers) ? headers : Object.entries(headers);
   return (
     <div>
       <h3 className="mb-1 font-medium">{title}</h3>
       <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-3 gap-y-0.5 font-mono">
-        {entries.map(([name, value]) => {
+        {entries.map(([name, value], index) => {
           // Inertia's own headers stand out.
           const inertia = /^x-inertia/i.test(name);
           return (
-            <div key={name} className="contents">
+            <div key={index} className="contents">
               <dt className={inertia ? 'text-violet-700' : 'text-muted-foreground'}>{name}</dt>
               <dd className={cn('break-all', inertia && 'text-violet-700')}>{value}</dd>
             </div>

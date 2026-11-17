@@ -684,6 +684,14 @@ test('the Network panel shows what each request is in Inertia\'s protocol', asyn
   await expect(types()).toHaveText(['Inertia', 'Partial']);
   await rows.first().click();
   await expect(details).toContainText('Deferred, not in this response: summary (group default).');
+  await network.getByRole('button', { name: 'Close request details' }).click();
+
+  // A later partial reload keeps what an earlier one supplied, such as the deferred summary.
+  await frame.getByRole('button', { name: 'Load done tasks' }).click();
+  await expect(types()).toHaveText(['Inertia', 'Partial', 'Partial']);
+  await rows.last().click();
+  await expect(details).toContainText('asked only for done_tasks.');
+  await expect(details).toContainText(/Not sent, so the client keeps the values it has: .*summary/);
 });
 
 test('published protocol handles partial reloads, deferred props, version conflicts and validation', async ({ page }) => {
