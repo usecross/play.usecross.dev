@@ -4,7 +4,7 @@
  * one state object, which the React shell (App.tsx) renders.
  */
 
-import { STARTER_DIR, counterFiles, counterSources, editableSources, starterBuildFiles } from '@play.usecross.dev/runner/counter-files';
+import { STARTER_DIR, editableSources, starterBuildFiles, starterFiles, starterSources } from '@play.usecross.dev/runner/starter-files';
 
 export interface ShellState {
   /** One line on what the runtime is doing, such as "Ready". */
@@ -23,7 +23,7 @@ export interface ShellState {
   editedFiles: string[];
   /** The file the editor shows. */
   selectedFile: string;
-  /** The preview's path inside the app, such as /counter. */
+  /** The preview's path inside the app, such as /tasks. */
   previewPath: string;
   editorFailed: boolean;
 }
@@ -36,7 +36,7 @@ let state: ShellState = {
   depsChanged: false,
   restarting: false,
   editedFiles: [],
-  selectedFile: editableSources[0],
+  selectedFile: 'app.py',
   previewPath: '',
   editorFailed: false,
 };
@@ -56,7 +56,7 @@ let editor: Promise<Awaited<ReturnType<typeof import('./editor').mountEditor>> |
 
 let pythonWorker: Worker | null = null;
 // The pyproject.toml the running worker installed.
-let runningPyproject = counterSources['pyproject.toml'];
+let runningPyproject = starterSources['pyproject.toml'];
 // Preview requests wait on this while a restarted worker takes over.
 let takeover: Promise<void> = Promise.resolve();
 
@@ -75,7 +75,6 @@ async function startPython(pyproject: string): Promise<Worker> {
     { type: 'module' }
   );
   
-  // Initialize with counter files
   return new Promise<Worker>((resolve, reject) => {
     const channel = new MessageChannel();
     let settled = false;
@@ -136,7 +135,8 @@ async function startPython(pyproject: string): Promise<Worker> {
     pythonWorker!.postMessage(
       {
         type: 'initialize',
-        files: { ...counterFiles, [`${STARTER_DIR}/pyproject.toml`]: pyproject },
+        starterDir: STARTER_DIR,
+        files: { ...starterFiles, [`${STARTER_DIR}/pyproject.toml`]: pyproject },
       },
       [channel.port2]
     );
@@ -241,10 +241,10 @@ async function initialize() {
       pythonWorker = await startPython(pyproject);
       runningPyproject = pyproject;
     } catch (error) {
-      if (pyproject === counterSources['pyproject.toml']) throw error;
+      if (pyproject === starterSources['pyproject.toml']) throw error;
       installError = `Your pyproject.toml failed to install, so Python runs the starter's dependencies.\n\n${(error as Error).message}`;
       updateStatus('Loading Python runtime with the starter\'s dependencies...');
-      pythonWorker = await startPython(counterSources['pyproject.toml']);
+      pythonWorker = await startPython(starterSources['pyproject.toml']);
     }
     answerPreviewRequests();
 
@@ -315,7 +315,7 @@ export function start(elements: { preview: HTMLIFrameElement; editor: HTMLElemen
   });
   // The editor loads in its own chunk, so it never delays Python.
   editor = import('./editor')
-    .then(({ mountEditor }) => mountEditor(elements.editor, counterSources, {
+    .then(({ mountEditor }) => mountEditor(elements.editor, starterSources, {
       editable: editableSources,
       onChange: editChanged,
       onSave: applyEdits,
@@ -336,7 +336,7 @@ export async function selectFile(path: string) {
 
 // Edits are saved in localStorage with a fingerprint of the starter they
 // were made against, so a deploy that changes the starter can be noticed.
-const SAVED_EDITS = 'play.usecross.dev:counter-edits';
+const SAVED_EDITS = 'play.usecross.dev:tasks-edits';
 interface SavedEdits { starter: string; files: Record<string, string> }
 
 function fingerprint(text: string): string {
@@ -344,7 +344,7 @@ function fingerprint(text: string): string {
   for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193);
   return (hash >>> 0).toString(16);
 }
-const starterFingerprint = fingerprint(JSON.stringify(counterSources));
+const starterFingerprint = fingerprint(JSON.stringify(starterSources));
 
 function loadEdits(): SavedEdits | null {
   try {
@@ -357,7 +357,7 @@ function loadEdits(): SavedEdits | null {
 
 function saveEdit(path: string, content: string) {
   const saved = loadEdits() ?? { starter: starterFingerprint, files: {} };
-  if (content === counterSources[path]) delete saved.files[path];
+  if (content === starterSources[path]) delete saved.files[path];
   else saved.files[path] = content;
   if (Object.keys(saved.files).length) localStorage.setItem(SAVED_EDITS, JSON.stringify(saved));
   else localStorage.removeItem(SAVED_EDITS);
@@ -404,7 +404,7 @@ function showResult(error: string | null, success: string | null) {
 /** The editable files as the editor has them: the starter, with saved edits over it. */
 function currentFiles(): Record<string, string> {
   const saved = loadEdits()?.files ?? {};
-  return Object.fromEntries(editableSources.map(path => [path, saved[path] ?? counterSources[path]]));
+  return Object.fromEntries(editableSources.map(path => [path, saved[path] ?? starterSources[path]]));
 }
 
 // Applies, restarts and data clears run one at a time, in order, so a slow
@@ -429,7 +429,7 @@ async function bundleAndSend(files: Record<string, string>, worker = pythonWorke
   const python = Object.fromEntries(Object.entries(files)
     .filter(([path]) => !(path in frontend) && path !== 'pyproject.toml'));
   let build = starterBuildFiles;
-  if (Object.entries(frontend).some(([path, content]) => content !== counterSources[path])) {
+  if (Object.entries(frontend).some(([path, content]) => content !== starterSources[path])) {
     try {
       // esbuild-wasm loads in its own chunk, on the first frontend edit.
       build = (await (await import('@play.usecross.dev/bundler/browser.ts')).bundle(frontend)).files;
@@ -514,9 +514,9 @@ export async function resetToStarter() {
   localStorage.removeItem(SAVED_EDITS);
   update({ starterChanged: false });
   refreshEditedFiles();
-  (await editor)?.setFiles(counterSources);
+  (await editor)?.setFiles(starterSources);
   updateStatus('Restoring the starter...');
-  const restart = runningPyproject !== counterSources['pyproject.toml'];
+  const restart = runningPyproject !== starterSources['pyproject.toml'];
   showResult(await (restart ? restartPython() : applyFiles(currentFiles())), 'Starter files restored');
   updateDepsNotice();
 }
@@ -532,7 +532,7 @@ export async function restart() {
   updateDepsNotice();
 }
 
-/** Delete the app's data, such as the count. Code edits are kept. */
+/** Delete the app's data, such as its tasks. Code edits are kept. */
 export async function clearData() {
   updateStatus('Clearing data...');
   showResult(await queued(() => sendToPython({ type: 'clear-data' })), 'Data cleared');

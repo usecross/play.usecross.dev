@@ -1,6 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from 'react';
 import { CircleAlert, Database, FileCode, Folder, Info, LoaderCircle, RotateCw, Undo2 } from 'lucide-react';
-import { editableSources } from '@play.usecross.dev/runner/counter-files';
+import { editableSources } from '@play.usecross.dev/runner/starter-files';
 import runtimeVersions from '../../../packages/starters/runtime.json';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -78,7 +78,7 @@ export function App() {
               </div>
             </div>
             <div className="relative min-h-0 flex-1 bg-muted/40">
-              <iframe ref={preview} id="preview" src="about:blank" title="Counter preview" className="size-full border-0" />
+              <iframe ref={preview} id="preview" src="about:blank" title="App preview" className="size-full border-0" />
               {!state.ready && <Starting status={state.status} />}
             </div>
           </section>
@@ -135,35 +135,44 @@ function ErrorPanel({ error }: { error: ShellState['error'] }) {
   );
 }
 
-/** The editable files as a tree: folders first, then files, as editors show them. */
-function fileTree() {
-  const folders = new Map<string, string[]>();
-  const files: string[] = [];
-  for (const path of editableSources) {
-    const slash = path.lastIndexOf('/');
-    if (slash < 0) files.push(path);
-    else folders.set(path.slice(0, slash), [...(folders.get(path.slice(0, slash)) ?? []), path]);
+interface TreeFolder { name: string; path: string; folders: TreeFolder[]; files: string[] }
+
+/** The editable files as a tree: in each folder, folders first, then files, as editors show them. */
+function fileTree(paths: string[]): TreeFolder {
+  const root: TreeFolder = { name: '', path: '', folders: [], files: [] };
+  for (const path of paths) {
+    let folder = root;
+    for (const name of path.split('/').slice(0, -1)) {
+      let child = folder.folders.find(child => child.name === name);
+      if (!child) folder.folders.push(child = { name, path: `${folder.path}${name}/`, folders: [], files: [] });
+      folder = child;
+    }
+    folder.files.push(path);
   }
-  return {
-    folders: [...folders].sort(([a], [b]) => a.localeCompare(b)).map(([folder, paths]) => [folder, paths.sort()] as const),
-    files: files.sort(),
+  const sort = (folder: TreeFolder) => {
+    folder.folders.sort((a, b) => a.name.localeCompare(b.name)).forEach(sort);
+    folder.files.sort();
   };
+  sort(root);
+  return root;
 }
-const tree = fileTree();
+const tree = fileTree(editableSources);
+/** Left padding for an entry this many folders deep. */
+const indent = (depth: number) => ({ paddingLeft: `${0.5 + depth}rem` });
 
 function Sidebar({ state }: { state: ShellState }) {
-  const file = (path: string, indent = false) => (
+  const file = (path: string, depth: number) => (
     <li key={path}>
       <button
         type="button"
         aria-label={path}
         aria-current={state.selectedFile === path}
         onClick={() => selectFile(path)}
+        style={indent(depth)}
         className={cn(
-          'flex h-7 w-full items-center gap-2 rounded-md px-2 text-left font-mono text-xs text-sidebar-foreground/70 outline-none',
+          'flex h-7 w-full items-center gap-2 rounded-md pr-2 text-left font-mono text-xs text-sidebar-foreground/70 outline-none',
           'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring',
           'aria-[current=true]:bg-sidebar-accent aria-[current=true]:text-sidebar-accent-foreground',
-          indent && 'pl-6',
         )}
       >
         <FileCode aria-hidden className="size-3.5 shrink-0" />
@@ -174,21 +183,22 @@ function Sidebar({ state }: { state: ShellState }) {
       </button>
     </li>
   );
+  const entries = (folder: TreeFolder, depth: number): ReactNode[] => [
+    ...folder.folders.map(child => (
+      <li key={child.path}>
+        <div style={indent(depth)} className="flex h-7 items-center gap-2 pr-2 font-mono text-xs text-muted-foreground">
+          <Folder aria-hidden className="size-3.5 shrink-0" /><span className="truncate">{child.name}</span>
+        </div>
+        <ul className="grid gap-0.5">{entries(child, depth + 1)}</ul>
+      </li>
+    )),
+    ...folder.files.map(path => file(path, depth)),
+  ];
   return (
     <aside className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
       <nav aria-label="Files" className="min-h-0 flex-1 overflow-auto p-2">
         <h2 className="px-2 pt-1 pb-1.5 text-xs font-medium text-muted-foreground">Files</h2>
-        <ul className="grid gap-0.5">
-          {tree.folders.map(([folder, paths]) => (
-            <li key={folder}>
-              <div className="flex h-7 items-center gap-2 px-2 font-mono text-xs text-muted-foreground">
-                <Folder aria-hidden className="size-3.5 shrink-0" />{folder}
-              </div>
-              <ul className="grid gap-0.5">{paths.map(path => file(path, true))}</ul>
-            </li>
-          ))}
-          {tree.files.map(path => file(path))}
-        </ul>
+        <ul className="grid gap-0.5">{entries(tree, 0)}</ul>
       </nav>
       <div className="grid shrink-0 gap-1.5 border-t p-3">
         <h2 className="text-xs font-medium text-muted-foreground">Python</h2>

@@ -66,7 +66,11 @@ function projectFiles(sources: Record<string, string>): esbuild.Plugin {
       // Project files get absolute paths under '/', so errors show them as `frontend/app.tsx`.
       build.onResolve({ filter: /^[^./]/ }, args =>
         args.kind === 'entry-point' ? { path: `/${args.path}` } : { path: args.path, external: true });
-      build.onResolve({ filter: /^\./ }, args => ({ path: new URL(args.path, `file://${args.importer}`).pathname }));
+      // Like Vite, an import may leave out the extension: './components/Layout'.
+      build.onResolve({ filter: /^\./ }, args => {
+        const path = new URL(args.path, `file://${args.importer}`).pathname;
+        return { path: ['', '.tsx', '.ts', '.jsx', '.js'].map(ext => path + ext).find(p => p.slice(1) in sources) ?? path };
+      });
       build.onLoad({ filter: /.*/ }, args => {
         const path = args.path.slice(1);
         const loader = loaders[path.split('.').pop()!];

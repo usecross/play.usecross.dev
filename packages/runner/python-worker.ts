@@ -42,7 +42,7 @@ function serialize<T>(task: () => Promise<T>): Promise<T> {
 /**
  * Initialize Pyodide and load dependencies
  */
-async function initialize(files?: VirtualFileSystem): Promise<void> {
+async function initialize(starterDir: string, files: VirtualFileSystem): Promise<void> {
   if (initialized) {
     console.warn('[Python Worker] Already initialized');
     return;
@@ -59,22 +59,13 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
   pyodide.FS.mount(IDBFS, {}, DATA_DIR);
   await syncData(true);
 
-  // Load user files into virtual filesystem if provided
-  if (files) {
-    console.log('[Python Worker] Loading user files...');
-    for (const [path, content] of Object.entries(files)) {
-      const dirPath = path.split('/').slice(0, -1).join('/');
-      if (dirPath) {
-        pyodide.FS.mkdirTree(dirPath);
-      }
-
-      if (typeof content === 'string') {
-        pyodide.FS.writeFile(path, content);
-      } else {
-        pyodide.FS.writeFile(path, content);
-      }
-    }
+  console.log('[Python Worker] Loading the starter\'s files...');
+  for (const [path, content] of Object.entries(files)) {
+    const dirPath = path.split('/').slice(0, -1).join('/');
+    if (dirPath) pyodide.FS.mkdirTree(dirPath);
+    pyodide.FS.writeFile(path, content);
   }
+  pyodide.globals.set('starter_dir', starterDir);
 
   console.log('[Python Worker] Installing packages...');
   
@@ -85,7 +76,7 @@ async function initialize(files?: VirtualFileSystem): Promise<void> {
   // The starter's own pyproject.toml lists its dependencies.
   const dependencies = pyodide.runPython(`
 import tomllib
-with open('/examples/counter/pyproject.toml', 'rb') as file:
+with open(f'{starter_dir}/pyproject.toml', 'rb') as file:
     starter = tomllib.load(file)
 starter['project']['dependencies']
   `);
@@ -139,8 +130,8 @@ os.environ['PLAYGROUND_DATA_DIR'] = '${DATA_DIR}'
 browser_inertia.install()
 # Run the starter from its folder, as \`fastapi run\` would, so CrossInertia's
 # default template and manifest paths find its files.
-os.chdir('/examples/counter')
-sys.path.insert(0, '/examples/counter')
+os.chdir(starter_dir)
+sys.path.insert(0, starter_dir)
 from app import app
 browser_inertia.reload()
 print(f'[Python Worker] CrossInertia {cross_inertia.__version__} loaded from {cross_inertia.__file__}')
@@ -250,7 +241,7 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
   try {
     switch (data.type) {
       case 'initialize': {
-        await initialize(data.files);
+        await initialize(data.starterDir, data.files);
         port?.postMessage({ type: 'initialized', success: true });
         break;
       }
