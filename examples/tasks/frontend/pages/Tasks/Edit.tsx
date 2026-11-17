@@ -20,7 +20,11 @@ export default function Edit({ task }: { task: Task }) {
           Title
           <input
             value={form.data.title}
-            onChange={event => form.setData('title', event.target.value)}
+            onChange={event => {
+              form.setData('title', event.target.value);
+              form.clearErrors('title');
+            }}
+            aria-required="true"
             aria-invalid={!!form.errors.title}
             aria-describedby="title-error"
           />

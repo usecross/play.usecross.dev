@@ -582,8 +582,12 @@ test('forms show validation errors by their field and a flash message after the 
   await expect(input).toHaveAttribute('aria-invalid', 'true');
   await expect(flash(page)).toBeHidden();
 
-  // A valid one redirects back; the session carries the flash message there.
+  // Typing clears the error; the server checks again on the next submit.
   await input.fill('Write the tests');
+  await expect(input).toHaveAttribute('aria-invalid', 'false');
+  await expect(frame.getByText('Give the task a title.')).toBeHidden();
+
+  // A valid title redirects back; the session carries the flash message there.
   await frame.getByRole('button', { name: 'Add' }).click();
   await expect(flash(page)).toHaveText('Task added.');
   await expect(input).toHaveValue('');

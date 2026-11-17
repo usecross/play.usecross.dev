@@ -23,7 +23,11 @@ export default function Index({ tasks, filter }: { tasks: Task[]; filter: keyof 
           aria-label="New task"
           placeholder="What needs doing?"
           value={form.data.title}
-          onChange={event => form.setData('title', event.target.value)}
+          onChange={event => {
+            form.setData('title', event.target.value);
+            form.clearErrors('title');
+          }}
+          aria-required="true"
           aria-invalid={!!form.errors.title}
           aria-describedby="title-error"
         />
