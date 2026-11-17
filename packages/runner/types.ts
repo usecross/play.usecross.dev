@@ -109,7 +109,8 @@ export interface CookieJar {
  * Message types for worker communication
  */
 export type WorkerMessage =
-  | { type: 'initialize'; files: VirtualFileSystem }
+  /** starterDir is the starter's folder in files, such as /examples/tasks. */
+  | { type: 'initialize'; starterDir: string; files: VirtualFileSystem }
   | { type: 'http-request'; request: HttpRequest }
   /** Edited starter files by VFS path; the app is re-imported. */
   | { type: 'apply-files'; files: Record<string, string> }

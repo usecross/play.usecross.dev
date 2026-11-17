@@ -26,7 +26,7 @@ Browser Service Worker
                                                   │
                                     ASGI scope with root_path=/preview
                                                   │
-                                    FastAPI /counter route
+                                    FastAPI /tasks route  
                                                   │
                                     CrossInertia renderer
                                       ├── VFS manifest + Jinja template
@@ -34,11 +34,11 @@ Browser Service Worker
 ```
 
 The Python VFS includes `/asgi_bridge.py`, `/browser_inertia.py`, and the
-counter app, template and frontend build under `/examples/counter/`.
-Those contents come from the actual repository files through raw imports; the
-frontend build comes from esbuild (see [CrossInertia Integration](#crossinertia-integration)).
+starter's Python modules, template and frontend build under `/examples/tasks/`.
+Those contents come from the actual repository files, read at build time by
+`packages/starters/index.ts`; the frontend build comes from esbuild (see [CrossInertia Integration](#crossinertia-integration)).
 
-## Request Flow (Counter Example)
+## Request Flow (Tasks Example)
 
 ### Initial page load
 
@@ -46,19 +46,19 @@ frontend build comes from esbuild (see [CrossInertia Integration](#crossinertia-
 2. It initializes Pyodide, writes the example VFS, installs the dependencies listed in the starter's `pyproject.toml` from PyPI, and imports/validates the starter.
 3. Only after success does it navigate the iframe to `/preview/`.
 4. The Service Worker forwards the full request URL with `rootPath: "/preview"`.
-5. The ASGI scope retains `path=/preview/counter` and `root_path=/preview`. FastAPI matches the unprefixed `/counter` route.
-6. The route calls `get_inertia(request, response).render("Counter", {"count": read_count()})`, reading the count from SQLite.
+5. The ASGI scope retains `path=/preview/tasks` and `root_path=/preview`. FastAPI matches the unprefixed `/tasks` route.
+6. The shared-props dependency adds the open-task count and any flash message, then the route calls `inertia.render("Tasks/Index", {"tasks": ..., "filter": ...})`, reading the tasks from SQLite.
 7. CrossInertia reads the VFS manifest and renders the real Jinja `inertia_head()` / `inertia_body()` helpers.
 8. Its template-generated `/preview/static/build/assets/app-[hash].js` and `.css` requests travel through the same bridge and are served from the VFS.
 
 ### Form submission
 
-1. The real Inertia React client POSTs JSON to `/preview/counter`.
-2. FastAPI validates the action and updates the count in SQLite. The worker saves `/data` to IndexedDB before it answers.
-3. A 303 redirect targets `request.url_for("get_counter")`, preserving `/preview/counter`.
-4. Inertia follows the redirect with `X-Inertia: true`.
-5. CrossInertia returns the actual page JSON, including its manifest-derived asset version and validation error props.
-6. The browser client renders the new count without reloading the Python worker.
+1. `useForm` POSTs JSON to `/preview/tasks`.
+2. FastAPI validates it with a Pydantic model. Invalid data raises `RequestValidationError`; CrossInertia's handler stores the errors in the session and redirects back, and the next page gets them as its `errors` prop.
+3. Valid data is saved in SQLite and a flash message in the session. The worker saves `/data` to IndexedDB before it answers.
+4. A 303 redirect goes back to the page the form was on (the Service Worker passes the request's referrer on as `Referer`).
+5. Inertia follows the redirect with `X-Inertia: true`, and CrossInertia returns the actual page JSON, including its manifest-derived asset version.
+6. The browser client renders the new list and the flash message without reloading the Python worker.
 
 Version conflicts, partial reload filtering, and initial HTML rendering are
 library behavior, not locally reimplemented protocol code.
@@ -122,7 +122,7 @@ async def handle_http_request(request_data: dict) -> dict:
 {
     'type': 'http',
     'method': 'GET',
-    'path': '/counter',
+    'path': '/tasks',
     'query_string': b'',
     'headers': [(b'host', b'localhost'), ...],
     'server': ('localhost', 80),
@@ -165,13 +165,13 @@ interface CookieJar {
 cookieJar.setCookies([
   'sessionid=abc123; Path=/; HttpOnly',
   'csrftoken=xyz789; Path=/',
-], 'http://localhost/counter');
+], 'http://localhost/tasks');
 ```
 
 **On Request:**
 ```typescript
 // Inject Cookie header before forwarding to Python
-const cookieHeader = cookieJar.getCookieHeader('http://localhost/counter');
+const cookieHeader = cookieJar.getCookieHeader('http://localhost/tasks');
 // cookieHeader = "sessionid=abc123; csrftoken=xyz789"
 ```
 
@@ -184,7 +184,7 @@ const cookieHeader = cookieJar.getCookieHeader('http://localhost/counter');
 
 ## CrossInertia Integration
 
-The counter uses the real `cross_inertia.fastapi` renderer. Its Vite-shaped
+The starter uses the real `cross_inertia.fastapi` renderer. Its Vite-shaped
 manifest maps `frontend/app.tsx` to hashed `assets/app-[hash].js` and `.css`
 files. `bundleFrontend` in `packages/bundler` builds them with esbuild:
 
@@ -225,7 +225,7 @@ request at a time and its files are in memory, so nothing waits on it.
 
 CrossInertia 0.22.1 cannot render these plain props inside Pyodide's running
 event loop without attempting to start a thread; 0.22.2 can, and is pinned in
-`examples/counter/pyproject.toml`. No CrossInertia source patch or
+`examples/tasks/pyproject.toml`. No CrossInertia source patch or
 fake-library fallback is applied here.
 
 See [real CrossInertia milestone](./real-cross-inertia.md) for the regression
@@ -248,7 +248,7 @@ interface PythonFrameworkRuntime {
 
 | Framework | Bridge | Priority | Notes |
 |-----------|--------|----------|-------|
-| FastAPI | ASGI | Phase 0 ✅ | Working in counter example |
+| FastAPI | ASGI | Phase 0 ✅ | Working in the Tasks starter |
 | Starlette | ASGI | Phase 0 ✅ | Same bridge as FastAPI |
 | Django | WSGI | Phase 2 | Needs ORM, migrations, middleware |
 | Litestar | ASGI | Phase 3 | Similar to FastAPI |
@@ -272,8 +272,8 @@ await syncData(true);  // FS.syncfs(true): load the saved files from IndexedDB
 ```
 
 ```python
-# examples/counter/app.py
-DATABASE = Path(os.environ.get("PLAYGROUND_DATA_DIR", BASE_DIR)) / "counter.sqlite3"
+# examples/tasks/db.py
+DATABASE = Path(os.environ.get("PLAYGROUND_DATA_DIR", ".")) / "tasks.sqlite3"
 ```
 
 After every request, and before answering it, the worker runs
@@ -330,7 +330,7 @@ to install, it starts with the starter's, shows the error, and keeps
 running dependencies aren't the starter's.
 
 **Edits are saved in the browser.** The shell keeps each edited file in
-`localStorage` (key `play.usecross.dev:counter-edits`), with a fingerprint of the
+`localStorage` (key `play.usecross.dev:tasks-edits`), with a fingerprint of the
 starter they were made against; a file edited back to the starter is dropped.
 On the next load, the tab that owns the runtime applies the saved files with
 `apply-files` before the preview first loads, so a waiting tab that takes over
@@ -589,8 +589,8 @@ channel.port1.onmessage = (event) => {
 
 ```python
 import os
-print(os.listdir('/examples/counter'))
-# ['app.py', 'templates', 'frontend', 'static']
+print(os.listdir('/examples/tasks'))
+# ['app.py', 'db.py', 'pyproject.toml', 'templates', 'static']
 ```
 
 ## Deployment
@@ -613,7 +613,7 @@ apps/shell/dist/
 ├── index.html                    # Shell
 ├── sw.js                         # Bundled runner Service Worker, scope /
 └── assets/
-    ├── main-[hash].js            # Shell JS and counter files
+    ├── main-[hash].js            # Shell JS and the starter's files
     ├── python-worker-[hash].js   # Python Worker
     └── asgi-bridge-[hash].py      # Python ASGI adapter
 ```

@@ -102,15 +102,7 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
     
     # Load and invoke the ASGI application
     try:
-        # Import the user's app
-        # Phase 0: Expects app.py with a FastAPI app
-        import sys
-        
-        # Try to import from examples/counter/app.py
-        if '/examples/counter' not in sys.path:
-            sys.path.insert(0, '/examples/counter')
-        
-        # Import without reload - app is loaded once at initialization
+        # The worker imports the starter's app.py once; applies replace it.
         from app import app as asgi_app
         
         # Invoke the ASGI app
@@ -141,8 +133,11 @@ async def handle_http_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
 def apply_files(files: Dict[str, str]) -> Optional[str]:
     """Write edited starter files and re-import the app.
 
-    Returns None on success. On failure, restores the previous files and app
-    module, so the last working version keeps serving, and returns the
+    Every module in the starter's folder (the working directory) is imported
+    again, so an edit to a module app.py imports, such as db.py, applies too.
+
+    Returns None on success. On failure, restores the previous files and
+    modules, so the last working version keeps serving, and returns the
     traceback. New files, such as a frontend bundle's, are removed again. The
     data directory is never touched, so app data survives.
     """
@@ -153,6 +148,7 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
 
     import browser_inertia
 
+    starter = os.getcwd() + '/'
     previous = {}
     for path in files:
         try:
@@ -160,7 +156,10 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
                 previous[path] = file.read()
         except FileNotFoundError:
             previous[path] = None
-    old_app = sys.modules.pop('app', None)
+    old_modules = {name: module for name, module in sys.modules.items()
+                   if (getattr(module, '__file__', None) or '').startswith(starter)}
+    for name in old_modules:
+        del sys.modules[name]
     try:
         for path, content in files.items():
             with open(path, 'w') as file:
@@ -174,7 +173,7 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
         # Show only the starter's own frames (Python files and Jinja
         # templates), not importlib's or the bridge's, then the error itself.
         frames = [f for f in traceback.extract_tb(exc.__traceback__)
-                  if f.filename.startswith('/examples/counter/')]
+                  if f.filename.startswith(starter)]
         lines = ['Traceback (most recent call last):\n', *traceback.format_list(frames)] if frames else []
         error = ''.join(lines + traceback.format_exception_only(type(exc), exc))
         for path, content in previous.items():
@@ -185,9 +184,10 @@ def apply_files(files: Dict[str, str]) -> Optional[str]:
                 continue
             with open(path, 'w') as file:
                 file.write(content)
-        sys.modules.pop('app', None)
-        if old_app is not None:
-            sys.modules['app'] = old_app
+        for name, module in list(sys.modules.items()):
+            if (getattr(module, '__file__', None) or '').startswith(starter):
+                del sys.modules[name]
+        sys.modules.update(old_modules)
         return error
 
 

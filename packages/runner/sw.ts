@@ -146,6 +146,11 @@ async function handlePreviewRequest(request: Request): Promise<Response> {
     request.headers.forEach((value, key) => {
       requestHeaders[key] = value;
     });
+    // The browser sends Referer to a server, but a Service Worker sees it only
+    // as request.referrer. Apps use it to redirect back after a form.
+    if (request.referrer && request.referrer !== 'about:client') {
+      requestHeaders['referer'] = request.referrer;
+    }
     
     // Inject virtual cookies
     const cookieHeader = cookieJar.getCookieHeader(appUrl);

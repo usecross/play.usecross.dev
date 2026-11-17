@@ -1,36 +1,34 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { readdirSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import * as esbuild from 'esbuild-wasm';
 import { bundleFrontend } from '../../packages/bundler/index.ts';
+import { STARTER, frontendSources, readStarter } from '../../packages/starters/index.ts';
 
 /**
- * `virtual:starter-build`: the starter's frontend, bundled at build time by
- * the same function the browser uses after an edit, so a first visit needs no
- * esbuild download.
+ * `virtual:starter`: the starter's files, and its frontend bundled at build
+ * time by the same function the browser uses after an edit, so a first visit
+ * needs no esbuild download.
  */
-function starterBuild(): Plugin {
-  const id = 'virtual:starter-build';
-  const frontend = resolve(__dirname, '../../examples/counter/frontend');
+function starter(): Plugin {
+  const id = 'virtual:starter';
+  const root = resolve(__dirname, '../..');
   return {
-    name: 'starter-build',
+    name: 'starter',
     resolveId: source => (source === id ? `\0${id}` : undefined),
     async load(moduleId) {
       if (moduleId !== `\0${id}`) return;
-      const sources: Record<string, string> = {};
-      for (const name of readdirSync(frontend)) {
-        this.addWatchFile(resolve(frontend, name));
-        sources[`frontend/${name}`] = readFileSync(resolve(frontend, name), 'utf8');
-      }
-      return `export default ${JSON.stringify(await bundleFrontend(esbuild, sources))};`;
+      const sources = readStarter(root);
+      for (const path of Object.keys(sources)) this.addWatchFile(resolve(root, 'examples', STARTER, path));
+      const build = await bundleFrontend(esbuild, frontendSources(sources));
+      return `export default ${JSON.stringify({ name: STARTER, sources, build })};`;
     },
   };
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), starterBuild()],
+  plugins: [react(), tailwindcss(), starter()],
   build: {
     rollupOptions: {
       input: {
