@@ -5,6 +5,27 @@
  */
 
 import { STARTER_DIR, editableSources, starterBuildFiles, starterFiles, starterSources } from '@play.usecross.dev/runner/starter-files';
+import type { HttpRequest, HttpResponse } from '@play.usecross.dev/runner/types';
+
+/** One request the preview made to the app, as the Network panel shows it. */
+export interface NetworkEntry {
+  id: number;
+  method: string;
+  /** The path inside the app, with its query, such as /tasks?filter=open. */
+  path: string;
+  requestHeaders: Record<string, string>;
+  requestBody: string | null;
+  /** 0 when Python failed to answer. */
+  status: number;
+  responseHeaders: Record<string, string>;
+  /** The response body, when it is text. */
+  responseBody: string | null;
+  /** The response body's size in bytes. */
+  size: number;
+  /** Milliseconds from the request reaching this tab to Python's answer. */
+  time: number;
+  error?: string;
+}
 
 export interface ShellState {
   /** One line on what the runtime is doing, such as "Ready". */
@@ -26,6 +47,8 @@ export interface ShellState {
   /** The preview's path inside the app, such as /tasks. */
   previewPath: string;
   editorFailed: boolean;
+  /** The preview's requests to the app, oldest first. */
+  network: NetworkEntry[];
 }
 
 let state: ShellState = {
@@ -39,6 +62,7 @@ let state: ShellState = {
   selectedFile: 'app.py',
   previewPath: '',
   editorFailed: false,
+  network: [],
 };
 const listeners = new Set<() => void>();
 export const getState = () => state;
@@ -171,6 +195,7 @@ function answerPreviewRequests() {
   pythonChannel.addEventListener('message', (event) => {
     if (event.data.type !== 'python-request') return;
     const { requestId, request } = event.data;
+    const started = performance.now();
 
     // Forward to Python worker
     const channel = new MessageChannel();
@@ -184,6 +209,8 @@ function answerPreviewRequests() {
           response: workerEvent.data.response,
           error: workerEvent.data.error,
         });
+        const { response, error } = workerEvent.data;
+        recordRequest(request, response, error, performance.now() - started);
       }
     };
     
@@ -265,6 +292,35 @@ async function initialize() {
     console.error('[Shell] Failed to initialize:', error);
     updateStatus('Failed to initialize: ' + (error as Error).message);
   }
+}
+
+// The Network panel keeps the latest requests.
+const NETWORK_LIMIT = 300;
+let lastRequestId = 0;
+const decoder = new TextDecoder();
+
+function recordRequest(request: HttpRequest, response: HttpResponse | undefined, error: string | undefined, time: number) {
+  const url = new URL(request.url);
+  const headers = response?.headers ?? {};
+  const body = response?.body;
+  const entry: NetworkEntry = {
+    id: ++lastRequestId,
+    method: request.method,
+    path: (url.pathname.replace(/^\/preview/, '') || '/') + url.search,
+    requestHeaders: request.headers,
+    requestBody: request.body?.length ? decoder.decode(request.body) : null,
+    status: response?.status ?? 0,
+    responseHeaders: headers,
+    responseBody: body && /^text\/|json|javascript/.test(headers['content-type'] ?? '') ? decoder.decode(body) : null,
+    size: body?.length ?? 0,
+    time,
+    error,
+  };
+  update({ network: [...state.network, entry].slice(-NETWORK_LIMIT) });
+}
+
+export function clearNetwork() {
+  update({ network: [] });
 }
 
 export function reloadPreview() {

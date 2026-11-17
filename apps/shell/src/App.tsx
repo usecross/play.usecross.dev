@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import {
   clearData, getState, reloadPreview, resetToStarter, restart, selectFile, start, subscribe, type ShellState,
 } from './runtime';
+import { NetworkPanel } from './NetworkPanel';
 
 export function App() {
   const state = useSyncExternalStore(subscribe, getState);
@@ -77,10 +78,18 @@ export function App() {
                 <span className="truncate">{state.previewPath || ' '}</span>
               </div>
             </div>
-            <div className="relative min-h-0 flex-1 bg-muted/40">
-              <iframe ref={preview} id="preview" src="about:blank" title="App preview" className="size-full border-0" />
-              {!state.ready && <Starting status={state.status} />}
-            </div>
+            <ResizablePanelGroup orientation="vertical" className="min-h-0 flex-1">
+              <ResizablePanel minSize={120}>
+                <div className="relative h-full bg-muted/40">
+                  <iframe ref={preview} id="preview" src="about:blank" title="App preview" className="size-full border-0" />
+                  {!state.ready && <Starting status={state.status} />}
+                </div>
+              </ResizablePanel>
+              <ResizableHandle />
+              <ResizablePanel defaultSize="38%" minSize={90}>
+                <NetworkPanel entries={state.network} />
+              </ResizablePanel>
+            </ResizablePanelGroup>
           </section>
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -642,6 +642,50 @@ test('Stats loads its deferred prop after the page, and its optional prop on req
   await expect(frame.getByRole('button', { name: 'Load done tasks' })).toBeHidden();
 });
 
+test('the Network panel shows what each request is in Inertia\'s protocol', async ({ page }) => {
+  await ready(page);
+  const frame = preview(page);
+  const network = page.getByRole('region', { name: 'Network' });
+  const rows = network.getByRole('table', { name: 'Requests' }).locator('tbody tr');
+  const types = () => rows.locator('td:nth-child(3)');
+  const details = network.getByRole('region', { name: 'Request details' });
+  const clear = () => network.getByRole('button', { name: 'Clear requests' }).click();
+
+  // The first load is a document, then the app's build.
+  await expect(types()).toContainText(['Document']);
+  expect((await types().allInnerTexts()).sort()).toEqual(expect.arrayContaining(['Document', 'Script', 'Stylesheet']));
+
+  // A filter click is one partial reload, JSON only: no document, script or stylesheet.
+  await clear();
+  await expect(network).toContainText('Requests the preview makes');
+  await frame.getByRole('navigation', { name: 'Filter' }).getByRole('link', { name: 'Open' }).click();
+  await expect(heading(page)).toHaveText('Open tasks');
+  await expect(types()).toHaveText(['Partial']);
+  await expect(rows.first()).toContainText('/tasks?filter=open');
+  await rows.first().click();
+  await expect(details).toContainText('A partial reload: the client asked only for tasks, filter.');
+  await expect(details.getByRole('list', { name: 'Props' }).locator('summary > span:first-child'))
+    .toHaveText(['flash', 'tasks', 'filter', 'errors']);
+  // The shared props it left out came from the full page before it.
+  await expect(details).toContainText('Not sent, so the client keeps the values it has: root_path, counts.');
+  await details.getByRole('tab', { name: 'Headers' }).click();
+  await expect(details).toContainText(/x-inertia-partial-data\s*tasks,filter/);
+  await network.getByRole('button', { name: 'Close request details' }).click();
+
+  // A form post redirects, and the browser follows it with an Inertia visit.
+  await clear();
+  await addTask(page, 'Watch the network');
+  await expect(types()).toHaveText(['Redirect', 'Inertia']);
+  await expect(rows.first()).toContainText('POST/tasks303');
+
+  // Stats renders first, then asks for its deferred prop.
+  await clear();
+  await frame.getByRole('link', { name: 'Stats', exact: true }).click();
+  await expect(types()).toHaveText(['Inertia', 'Partial']);
+  await rows.first().click();
+  await expect(details).toContainText('Deferred, not in this response: summary (group default).');
+});
+
 test('published protocol handles partial reloads, deferred props, version conflicts and validation', async ({ page }) => {
   await ready(page);
   const result = await page.evaluate(async () => {
