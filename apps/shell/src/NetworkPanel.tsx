@@ -4,7 +4,7 @@
  * an Inertia visit that returns only JSON, a partial reload, a redirect.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Ban, X } from 'lucide-react';
+import { Ban, ChevronRight, History, Hourglass, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -230,17 +230,27 @@ function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entri
   const hasPayload = query.length > 0 || entry.requestBody !== null;
   const [tab, setTab] = useState(page ? 'page' : 'headers');
   const description = explain(entry);
+  const k = kind(entry);
 
   return (
     <div role="region" aria-label="Request details" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex shrink-0 items-start gap-2 border-b px-3 py-2 text-xs">
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-mono font-medium">
-            {entry.method} {entry.path} <span className="text-muted-foreground">· {entry.status || 'failed'} · {kind(entry)}</span>
-          </p>
-          {description && <p className="mt-1 text-muted-foreground">{description}</p>}
+      <div className="shrink-0 border-b px-3 py-2.5 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="rounded bg-muted px-1.5 py-px font-mono text-[0.7rem] font-semibold">{entry.method}</span>
+          <span className="min-w-0 truncate font-mono font-medium" title={entry.path}>{entry.path}</span>
+          <span className={cn('rounded px-1.5 py-px tabular-nums', statusStyle(entry.status))}>{entry.status || 'failed'}</span>
+          <span className={cn('rounded px-1.5 py-px', KIND_STYLE[k] ?? 'bg-muted text-muted-foreground')}>{k}</span>
+          <span className="ml-auto whitespace-nowrap tabular-nums text-muted-foreground">
+            {formatSize(entry.size)} · {Math.round(entry.time)} ms
+          </span>
+          <Button variant="ghost" size="icon-xs" aria-label="Close request details" onClick={onClose}><X /></Button>
         </div>
-        <Button variant="ghost" size="icon-xs" aria-label="Close request details" onClick={onClose}><X /></Button>
+        {description && (
+          <p className="mt-2 flex gap-2 rounded-md bg-muted/60 px-2.5 py-2 leading-relaxed text-muted-foreground">
+            <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            <span>{description}</span>
+          </p>
+        )}
       </div>
       <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1 gap-0">
         <TabsList variant="line" className="h-8 shrink-0 px-2">
@@ -251,19 +261,16 @@ function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entri
         </TabsList>
         <div className="min-h-0 flex-1 overflow-auto border-t p-3 text-xs">
           {page && <TabsContent value="page"><PageView entry={entry} page={page} known={known} /></TabsContent>}
-          <TabsContent value="headers" className="grid grid-cols-1 gap-3">
+          <TabsContent value="headers" className="grid grid-cols-1 gap-4">
             <HeaderList title="General" headers={{ 'Request URL': `/preview${entry.path}`, 'Request method': entry.method, Status: String(entry.status || 'failed') }} />
             <HeaderList title="Response headers" headers={entry.responseHeaders} />
             <HeaderList title="Request headers" headers={entry.requestHeaders} />
           </TabsContent>
           {hasPayload && (
-            <TabsContent value="payload" className="grid grid-cols-1 gap-3">
+            <TabsContent value="payload" className="grid grid-cols-1 gap-4">
               {query.length > 0 && <HeaderList title="Query string" headers={query} />}
               {entry.requestBody !== null && (
-                <div>
-                  <h3 className="mb-1 font-medium">Request body</h3>
-                  <Code text={entry.requestBody} />
-                </div>
+                <Section title="Request body"><Code text={entry.requestBody} /></Section>
               )}
             </TabsContent>
           )}
@@ -278,66 +285,132 @@ function RequestDetail({ entry, entries, onClose }: { entry: NetworkEntry; entri
   );
 }
 
-/** The Inertia page object, with each prop labelled by how it got there. */
+function statusStyle(status: number) {
+  if (status >= 200 && status < 300) return 'bg-emerald-100 text-emerald-900';
+  if (status >= 300 && status < 400) return 'bg-amber-100 text-amber-900';
+  return 'bg-red-100 text-red-900';
+}
+
+/** The Inertia page object, with its props grouped by where they come from. */
 function PageView({ entry, page, known }: { entry: NetworkEntry; page: Record<string, any>; known: Set<string> | null }) {
+  const props: Record<string, unknown> = page.props ?? {};
   const shared = new Set<string>(page.sharedProps ?? []);
-  const deferred = Object.entries<string[]>(page.deferredProps ?? {}).flatMap(([group, props]) => props.map(prop => [prop, group]));
   const requested = list(header(entry, 'x-inertia-partial-data'));
+  const deferred = Object.entries<string[]>(page.deferredProps ?? {}).flatMap(([group, names]) => names.map(name => [name, group]));
   // Props a partial reload left out. After a Clear the history is gone, but
   // the page object still names the shared ones.
-  const kept = known ? [...new Set([...known, ...shared])].filter(name => !(name in (page.props ?? {}))) : [];
+  const kept = known ? [...new Set([...known, ...shared])].filter(name => !(name in props)) : [];
+  const names = Object.keys(props);
+  const groups = [
+    { title: 'From the route', hint: 'passed to inertia.render()', names: names.filter(name => !shared.has(name) && name !== 'errors') },
+    { title: 'Shared', hint: 'from inertia_share, on every page', names: names.filter(name => shared.has(name)) },
+    { title: 'Added by Inertia', hint: 'validation errors, on every response', names: names.filter(name => name === 'errors' && !shared.has(name)) },
+  ].filter(group => group.names.length);
+
   return (
-    <div className="grid grid-cols-1 gap-3">
-      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-        <dt className="text-muted-foreground">component</dt><dd className="font-mono">{page.component}</dd>
-        <dt className="text-muted-foreground">url</dt><dd className="font-mono">{page.url}</dd>
-        <dt className="text-muted-foreground">version</dt><dd className="truncate font-mono">{page.version}</dd>
+    <div className="grid grid-cols-1 gap-4">
+      <dl className="grid grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] overflow-hidden rounded-md border">
+        {[['Component', page.component], ['URL', page.url], ['Version', page.version]].map(([label, value]) => (
+          <div key={label} className="min-w-0 border-r px-2.5 py-1.5 last:border-r-0">
+            <dt className="text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">{label}</dt>
+            <dd className="truncate font-mono" title={value}>{value}</dd>
+          </div>
+        ))}
       </dl>
-      <div>
-        <h3 className="mb-1 font-medium">Props in this response</h3>
-        <ul aria-label="Props" className="grid grid-cols-1 gap-1">
-          {Object.entries(page.props ?? {}).map(([name, value]) => (
-            <li key={name}>
-              <details className="group rounded-md border">
-                <summary className="flex cursor-pointer items-center gap-2 px-2 py-1">
-                  <span className="font-mono font-medium">{name}</span>
-                  {shared.has(name) && <Badge title="From inertia_share, on every page">shared</Badge>}
-                  {requested.includes(name) && <Badge title="Named in X-Inertia-Partial-Data">requested</Badge>}
-                  <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground">{JSON.stringify(value)}</span>
-                </summary>
-                <Code text={JSON.stringify(value, null, 2)} className="m-0 rounded-none border-0 border-t" />
-              </details>
-            </li>
-          ))}
-        </ul>
-      </div>
-      {kept.length > 0 && (
-        <p className="text-muted-foreground">
-          Not sent, so the client keeps the values it has: {names(kept)}.
-        </p>
-      )}
-      {deferred.length > 0 && (
-        <p className="text-muted-foreground">
-          Deferred, not in this response: {deferred.map(([prop, group], i) => (
-            <span key={prop}>{i ? ', ' : ''}<code className="font-mono text-foreground">{prop}</code> (group {group})</span>
-          ))}. The client asks for them in a partial reload once the page has rendered.
-        </p>
+      {groups.map(group => (
+        <Section key={group.title} title={group.title} hint={group.hint}>
+          <ul aria-label={`${group.title} props`} className="divide-y overflow-hidden rounded-md border">
+            {group.names.map(name => (
+              <li key={name}>
+                <details className="group">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-1.5 hover:bg-muted/50 [&::-webkit-details-marker]:hidden">
+                    <ChevronRight aria-hidden className="size-3 shrink-0 text-muted-foreground transition-transform group-open:rotate-90" />
+                    <span className="font-mono font-medium">{name}</span>
+                    {requested.includes(name) && <Badge title="Named in X-Inertia-Partial-Data">requested</Badge>}
+                    <span className="min-w-0 flex-1 truncate font-mono text-muted-foreground"><Preview value={props[name]} /></span>
+                  </summary>
+                  <Code text={JSON.stringify(props[name])} className="rounded-none border-0 border-t" />
+                </details>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ))}
+      {(deferred.length > 0 || kept.length > 0) && (
+        <Section title="Not in this response">
+          <ul aria-label="Props not in this response" className="divide-y overflow-hidden rounded-md border border-dashed">
+            {deferred.map(([name, group]) => (
+              <li key={name} className="flex items-center gap-2 px-2 py-1.5">
+                <Hourglass aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                <span className="font-mono font-medium">{name}</span>
+                <Badge title={`defer() group "${group}"`}>deferred</Badge>
+                <span className="min-w-0 truncate text-muted-foreground">The client asks for it once the page has rendered.</span>
+              </li>
+            ))}
+            {kept.map(name => (
+              <li key={name} className="flex items-center gap-2 px-2 py-1.5">
+                <History aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+                <span className="font-mono font-medium">{name}</span>
+                <Badge title="Not requested in this partial reload">kept</Badge>
+                <span className="min-w-0 truncate text-muted-foreground">Not requested; the client keeps the value it has.</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
       )}
     </div>
   );
 }
 
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  return (
+    <section aria-label={title}>
+      <h3 className="mb-1.5 flex items-baseline gap-2">
+        <span className="font-medium">{title}</span>
+        {hint && <span className="text-muted-foreground">{hint}</span>}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
 function Badge({ children, title }: { children: ReactNode; title: string }) {
-  return <span title={title} className="rounded bg-muted px-1 text-[0.7rem] text-muted-foreground">{children}</span>;
+  return <span title={title} className="shrink-0 rounded bg-muted px-1 text-[0.65rem] text-muted-foreground">{children}</span>;
+}
+
+/** A one-line preview of a value, as browser devtools show one. */
+function Preview({ value, nested = false }: { value: unknown; nested?: boolean }): ReactNode {
+  if (value === null || value === undefined) return <span className="text-muted-foreground/70">{String(value)}</span>;
+  if (typeof value === 'string') return <span className="text-emerald-700">"{value}"</span>;
+  if (typeof value !== 'object') return <span className="text-sky-700">{String(value)}</span>;
+  const comma = (i: number) => (i ? ', ' : '');
+  if (Array.isArray(value)) {
+    if (nested) return <>[…]</>;
+    return (
+      <>
+        <span className="text-muted-foreground/70">({value.length}) </span>
+        [{value.slice(0, 4).map((item, i) => <span key={i}>{comma(i)}<Preview value={item} nested /></span>)}{value.length > 4 && ', …'}]
+      </>
+    );
+  }
+  if (nested) return <>{'{…}'}</>;
+  const entries = Object.entries(value);
+  if (!entries.length) return <>{'{}'}</>;
+  return (
+    <>
+      {'{'}{entries.map(([key, item], i) => (
+        <span key={key}>{comma(i)}<span className="text-violet-700">{key}</span>: <Preview value={item} nested /></span>
+      ))}{'}'}
+    </>
+  );
 }
 
 /** Name and value pairs; a list keeps a query string's repeated names. */
 function HeaderList({ title, headers }: { title: string; headers: Record<string, string> | [string, string][] }) {
   const entries = Array.isArray(headers) ? headers : Object.entries(headers);
   return (
-    <div>
-      <h3 className="mb-1 font-medium">{title}</h3>
-      <dl className="grid grid-cols-[minmax(0,auto)_1fr] gap-x-3 gap-y-0.5 font-mono">
+    <Section title={title}>
+      <dl className="grid grid-cols-[minmax(0,max-content)_1fr] gap-x-4 gap-y-1 rounded-md border px-2.5 py-2 font-mono">
         {entries.map(([name, value], index) => {
           // Inertia's own headers stand out.
           const inertia = /^x-inertia/i.test(name);
@@ -349,20 +422,35 @@ function HeaderList({ title, headers }: { title: string; headers: Record<string,
           );
         })}
       </dl>
-    </div>
+    </Section>
   );
 }
 
+const JSON_TOKEN = /("(?:\\.|[^"\\])*")(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+
+/** Pretty-printed JSON with keys, strings and numbers coloured; other text as it is. */
 function Code({ text, className }: { text: string; className?: string }) {
-  let pretty = text;
+  let pretty: string | null = null;
   try {
     pretty = JSON.stringify(JSON.parse(text), null, 2);
   } catch {
     // Not JSON: show it as it is.
   }
+  const body: ReactNode[] = [];
+  if (pretty !== null) {
+    let last = 0;
+    for (const match of pretty.matchAll(JSON_TOKEN)) {
+      body.push(pretty.slice(last, match.index));
+      const [token, string, colon] = match;
+      const style = colon ? 'text-violet-700' : string ? 'text-emerald-700' : /^[tfn]/.test(token) ? 'text-muted-foreground' : 'text-sky-700';
+      body.push(<span key={match.index} className={style}>{string ?? token}</span>, colon ?? '');
+      last = match.index! + token.length;
+    }
+    body.push(pretty.slice(last));
+  }
   return (
-    <pre className={cn('overflow-auto rounded-md border bg-muted/40 p-2 font-mono text-[0.7rem]/4 whitespace-pre-wrap break-all', className)}>
-      {pretty}
+    <pre className={cn('overflow-auto rounded-md border bg-muted/40 p-2.5 font-mono text-[0.7rem]/4 whitespace-pre-wrap break-all', className)}>
+      {pretty === null ? text : body}
     </pre>
   );
 }

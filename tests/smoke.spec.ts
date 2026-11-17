@@ -664,10 +664,13 @@ test('the Network panel shows what each request is in Inertia\'s protocol', asyn
   await expect(rows.first()).toContainText('/tasks?filter=open');
   await rows.first().click();
   await expect(details).toContainText('A partial reload: the client asked only for tasks, filter.');
-  await expect(details.getByRole('list', { name: 'Props' }).locator('summary > span:first-child'))
-    .toHaveText(['flash', 'tasks', 'filter', 'errors']);
+  const propNames = (group: string) => details.getByRole('list', { name: group }).locator('summary > span.font-mono.font-medium');
+  await expect(propNames('From the route props')).toHaveText(['tasks', 'filter']);
+  await expect(propNames('Shared props')).toHaveText(['flash']);
+  await expect(propNames('Added by Inertia props')).toHaveText(['errors']);
   // The shared props it left out came from the full page before it.
-  await expect(details).toContainText('Not sent, so the client keeps the values it has: root_path, counts.');
+  const notSent = details.getByRole('list', { name: 'Props not in this response' }).getByRole('listitem');
+  await expect(notSent).toHaveText([/^root_pathkept/, /^countskept/]);
   await details.getByRole('tab', { name: 'Headers' }).click();
   await expect(details).toContainText(/x-inertia-partial-data\s*tasks,filter/);
   await network.getByRole('button', { name: 'Close request details' }).click();
@@ -683,7 +686,8 @@ test('the Network panel shows what each request is in Inertia\'s protocol', asyn
   await frame.getByRole('link', { name: 'Stats', exact: true }).click();
   await expect(types()).toHaveText(['Inertia', 'Partial']);
   await rows.first().click();
-  await expect(details).toContainText('Deferred, not in this response: summary (group default).');
+  await expect(details.getByRole('list', { name: 'Props not in this response' }).getByRole('listitem'))
+    .toHaveText([/^summarydeferred/]);
   await network.getByRole('button', { name: 'Close request details' }).click();
 
   // A later partial reload keeps what an earlier one supplied, such as the deferred summary.
@@ -691,7 +695,7 @@ test('the Network panel shows what each request is in Inertia\'s protocol', asyn
   await expect(types()).toHaveText(['Inertia', 'Partial', 'Partial']);
   await rows.last().click();
   await expect(details).toContainText('asked only for done_tasks.');
-  await expect(details).toContainText(/Not sent, so the client keeps the values it has: .*summary/);
+  await expect(details.getByRole('list', { name: 'Props not in this response' })).toContainText(/summarykept/);
 });
 
 test('published protocol handles partial reloads, deferred props, version conflicts and validation', async ({ page }) => {
